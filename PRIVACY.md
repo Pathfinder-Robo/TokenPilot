@@ -1,6 +1,6 @@
 # Privacy Notice
 
-TokenPilot is designed to inspect only numerical usage metadata locally while making explicit, narrowly scoped network requests when running.
+TokenPilot processes usage metadata and appearance preferences locally, with the explicitly described network requests below.
 
 ## 1. Local Data Accessed by the Viewer (`app/bridge.py`)
 
@@ -12,6 +12,11 @@ TokenPilot is designed to inspect only numerical usage metadata locally while ma
   - Prefers numeric usage summaries from `argon/usage-cache/*.json`. Legacy fallbacks parse `runs.jsonl`, `outcomes.jsonl`, `interaction-*.json`, or `result.json` locally to extract usage; those legacy files may also contain task content.
 - **Local Viewer State**:
   - Writes routing preference to `argon/routing.json` (`0600`) and viewer caches/state to `argon/viewer/quota-history.json`, `argon/viewer/nextreset-cache.json`, and `argon/viewer/ui-state.json`.
+- **Guided Appearance Preference Inference (`app/InstallationPreferences.swift`, `configure_app.py`)**:
+  - **Local Appearance & OS Reads**: Reads only the app's local `UserDefaults` entry (`TokenPilot.AppearanceSettings.v2` under bundle identifier `local.routingfloat.viewer`), macOS `Locale.preferredLanguages`, and `NSApp.effectiveAppearance` (`aqua` / `darkAqua`).
+  - **Read-Only Inspection (`--inspect-install-preferences`, `configure_app.py --inspect`)**: Emits a JSON proposal and exits without writing preferences, creating windows, starting `bridge.py`, making network requests, or reading credentials.
+  - **Scoped Writes Only on Configure (`--configure-install-preferences`, `configure_app.py`)**: Writes only the resolved appearance record (`theme`, `language`, and preserved `customColors`) to `UserDefaults` (`TokenPilot.AppearanceSettings.v2`) after all choices are validated and resolved, and skips rewriting when the resolved choices already match the saved record.
+  - **No Chat, Session Log, or Credential Access**: Neither `configure_app.py` nor `InstallationPreferences.swift` reads chat transcripts, Codex session logs, `auth.json`, or `credentials.env`, nor do they invoke `install.py` or grant Google code-export consent. Launching `TokenPilot.app` directly (bypassing `configure_app.py` or `--configure-install-preferences`) uses standard `AppearanceStore` startup defaults unless preferences were already saved.
 - **No Credential File Reads in Viewer**:
   - The viewer never reads Codex `auth.json` or `${CODEX_HOME:-~/.codex}/argon/credentials.env`, and strips `GEMINI_API_KEY` from child processes.
 

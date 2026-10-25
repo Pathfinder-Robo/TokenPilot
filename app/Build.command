@@ -35,6 +35,7 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$MODULE_CACHE_
 swiftc \
   "$SOURCE_DIR/main.swift" \
   "$SOURCE_DIR/Appearance.swift" \
+  "$SOURCE_DIR/InstallationPreferences.swift" \
   "$SOURCE_DIR/LiquidGlassContent.swift" \
   "$SOURCE_DIR/GaussianTextFrost.swift" \
   "$SOURCE_DIR/NextResetCardView.swift" \
@@ -91,8 +92,8 @@ bundled_bridge = app / 'Resources' / 'bridge.py'
             'CFBundleName': 'TokenPilot',
             'CFBundleDisplayName': 'TokenPilot',
             'CFBundleIdentifier': 'local.routingfloat.viewer',
-            'CFBundleVersion': '16',
-            'CFBundleShortVersionString': '2.5',
+            'CFBundleVersion': '17',
+            'CFBundleShortVersionString': '2.6',
             'CFBundleExecutable': 'TokenPilot',
             'CFBundlePackageType': 'APPL',
             'LSMinimumSystemVersion': '15.0',

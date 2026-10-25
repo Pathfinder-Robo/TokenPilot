@@ -34,34 +34,38 @@ TokenPilot can be built and used standalone with Codex alone—installing the op
 ```text
 .
 ├── app/
-│   ├── Build.command             # Self-contained macOS .app builder (outputs to dist/TokenPilot.app)
-│   ├── main.swift                # Floating panel, status bar item, collector IPC, and --ui-checks
-│   ├── Appearance.swift          # 6 themes, WCAG contrast engine, EN/zh-Hans localization, Customize UI
-│   ├── LiquidGlassContent.swift  # macOS 26+ NSGlassEffectView runtime bridge & macOS 15 fallback
-│   ├── GaussianTextFrost.swift   # Weighted 2D Gaussian text-legibility frost field for Liquid Glass
-│   ├── NextResetCardView.swift   # SwiftUI card presentation for public NextReset forecast data
-│   ├── Icon.swift                # Standalone AppKit iconset generator (asset utility, not app entry)
-│   ├── TokenPilot.icns           # App bundle icon
-│   ├── TokenPilot.png            # Preview icon asset
-│   ├── bridge.py                 # Local usage collector, Codex rateLimits reader, and JSON stdio server
-│   ├── forecasting.py            # Trailing 15-minute quota depletion forecasting logic
-│   └── nextreset.py              # Public NextReset forecast client and schema validator
+│   ├── Build.command                 # Self-contained macOS .app builder (outputs to dist/TokenPilot.app)
+│   ├── main.swift                    # Floating panel, status bar item, collector IPC, and --ui-checks
+│   ├── Appearance.swift              # 6 themes, WCAG contrast engine, EN/zh-Hans localization, Customize UI
+│   ├── InstallationPreferences.swift # Guided install preference inference & CLI (--inspect/--configure-install-preferences)
+│   ├── LiquidGlassContent.swift      # macOS 26+ NSGlassEffectView runtime bridge & macOS 15 fallback
+│   ├── GaussianTextFrost.swift       # Weighted 2D Gaussian text-legibility frost field for Liquid Glass
+│   ├── NextResetCardView.swift       # SwiftUI card presentation for public NextReset forecast data
+│   ├── Icon.swift                    # Standalone AppKit iconset generator (asset utility, not app entry)
+│   ├── TokenPilot.icns               # App bundle icon
+│   ├── TokenPilot.png                # Preview icon asset
+│   ├── bridge.py                     # Local usage collector, Codex rateLimits reader, and JSON stdio server
+│   ├── forecasting.py                # Trailing 15-minute quota depletion forecasting logic
+│   └── nextreset.py                  # Public NextReset forecast client and schema validator
 ├── routing/
-│   ├── SKILL.md                  # Optional Argon task-routing skill instructions
-│   ├── agents/openai.yaml        # Skill metadata for Codex discovery
+│   ├── SKILL.md                      # Optional Argon task-routing skill instructions
+│   ├── agents/openai.yaml            # Skill metadata for Codex discovery
 │   └── scripts/
-│       ├── argon_worker.py       # Sandboxed Google Interactions API coding worker
-│       ├── routing_control.py    # Live routing preference reader and numeric run-state publisher
-│       └── run_worker.py         # Consent- and routing-aware worker launcher
-├── install.py                    # Explicit opt-in installer for the optional Argon routing skill
+│       ├── argon_worker.py           # Sandboxed Google Interactions API coding worker
+│       ├── routing_control.py        # Live routing preference reader and numeric run-state publisher
+│       └── run_worker.py             # Consent- and routing-aware worker launcher
+├── configure_app.py                  # Guided appearance preference inspector/configurator for built TokenPilot.app
+├── INSTALL_IN_CODEX.md               # Copyable Codex installation prompt and preference precedence workflow
+├── install.py                        # Explicit opt-in installer for the optional Argon routing skill
 └── tests/
-    ├── run_tests.py              # Portable unittest runner (requires no installed ~/.codex state)
-    ├── forecast-fixture.json     # Small synthetic NextReset forecast fixture
-    ├── test_bridge.py            # Collector, quota normalization, launcher block, and installer tests
-    ├── test_forecasting.py       # 15-minute quota forecast and display-selection tests
-    ├── test_nextreset_ai.py      # NextReset JSON/HTML parsing, expiry, and URL validation tests
-    ├── test_source_integration.py# Collector NextReset cache and staleness integration tests
-    └── test_transport.py         # Worker HTTP IncompleteRead and bounded polling retry tests
+    ├── run_tests.py                  # Portable unittest runner (requires no installed ~/.codex state)
+    ├── forecast-fixture.json         # Small synthetic NextReset forecast fixture
+    ├── test_bridge.py                # Collector, quota normalization, launcher block, and installer tests
+    ├── test_configure_app.py         # Guided installation preference inference and CLI configurator tests
+    ├── test_forecasting.py           # 15-minute quota forecast and display-selection tests
+    ├── test_nextreset_ai.py          # NextReset JSON/HTML parsing, expiry, and URL validation tests
+    ├── test_source_integration.py    # Collector NextReset cache and staleness integration tests
+    └── test_transport.py             # Worker HTTP IncompleteRead and bounded polling retry tests
 ```
 
 ---
@@ -82,19 +86,44 @@ TokenPilot can be built and used standalone with Codex alone—installing the op
 
 ## Build & Run the Native App
 
-Run `app/Build.command` from the repository root:
+Run `app/Build.command` from the repository root, then run `configure_app.py` to infer or configure your appearance preferences:
 
 ```bash
 ./app/Build.command
+python3 configure_app.py --launch
 ```
 
+For guided installation inside a Codex session (including a copyable prompt and precedence rules for explicit requests, saved settings, conversational cues, and macOS defaults), see [INSTALL_IN_CODEX.md](INSTALL_IN_CODEX.md).
+
 What `app/Build.command` does:
-1. Compiles the 5 app Swift sources (`main.swift`, `Appearance.swift`, `LiquidGlassContent.swift`, `GaussianTextFrost.swift`, `NextResetCardView.swift`) into `dist/TokenPilot.app/Contents/MacOS/TokenPilot` using a local module cache under `.build/module-cache`.
+1. Compiles the 6 app Swift sources (`main.swift`, `Appearance.swift`, `InstallationPreferences.swift`, `LiquidGlassContent.swift`, `GaussianTextFrost.swift`, `NextResetCardView.swift`) into `dist/TokenPilot.app/Contents/MacOS/TokenPilot` using a local module cache under `.build/module-cache`.
 2. Copies `bridge.py`, `forecasting.py`, `nextreset.py`, and `TokenPilot.icns` into `dist/TokenPilot.app/Contents/Resources/`.
 3. Generates `dist/TokenPilot.app/Contents/Resources/runtime.json` with `bridge_path: null`, so the app resolves `Contents/Resources/bridge.py` from its current bundle location even after the app is moved, and performs local ad-hoc code signing (`codesign --sign -`).
 4. **Does not modify `~/.codex`**: Building the app only writes inside the repository (`dist/` and `.build/`). When you later launch `TokenPilot.app`, the running app reads your runtime `codex_home` (`${CODEX_HOME:-~/.codex}`) to view sessions and store viewer preferences.
 
 > **Note:** `Contents/Resources/runtime.json` inside the built `.app` records machine-specific binary and profile paths (`python`, `codex_binary`, `codex_home`, `bridge_path`) and should not be redistributed.
+
+### Guided Appearance Configuration (`configure_app.py`)
+
+After building `dist/TokenPilot.app`, run `configure_app.py` to resolve interface language (`en` or `zh-Hans`) and theme (`cupertino`, `graphite`, `instrument`, `frosted`, `liquid`, `vibrant`) while preserving any existing custom accent colors:
+
+```bash
+# Inspect the inferred saved/system proposal without writing or launching (read-only)
+python3 configure_app.py --inspect
+
+# Auto-accept reliable saved/system inferences (or prompt on TTY only for unresolved fields)
+python3 configure_app.py
+
+# Explicitly set theme/language and launch TokenPilot.app via open -a
+python3 configure_app.py --language zh-Hans --theme liquid --launch
+```
+
+How preference inference works:
+- **Precedence**: Explicit `--language` / `--theme` flags override saved preferences; valid saved preferences (`UserDefaults` bundle `local.routingfloat.viewer`, key `TokenPilot.AppearanceSettings.v2`) survive updates and override system defaults; missing or corrupt saved fields fall back independently to supported macOS defaults.
+- **System Language (`Locale.preferredLanguages`)**: Uses the first clearly supported preferred language (`en`/`en-*` -> `en`; `zh-Hans`, `zh-CN`, `zh-SG`, generic `zh` -> `zh-Hans`). Traditional Chinese (`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`) is never silently mapped to Simplified Chinese; if no supported language appears later in the list, `configure_app.py` asks only for the language choice.
+- **System Appearance (`NSApp.effectiveAppearance`)**: Maps Dark mode (`darkAqua`) -> `graphite` and Light mode (`aqua`) -> `cupertino` when no theme is saved. Saved glass (`frosted`, `liquid`) or `vibrant` themes remain untouched.
+- **Direct App Launches**: Launching `TokenPilot.app` directly without running `configure_app.py` (or `--configure-install-preferences`) uses `AppearanceStore`'s standard startup defaults unless preferences were already saved.
+- **Separated from Optional Gemini Setup**: `configure_app.py` never runs `install.py`, never records code-export consent, and never reads or prompts for a Google API key.
 
 ### Optional Build Overrides
 
@@ -121,6 +150,14 @@ Run the portable unit test suite from a clean checkout (does not read or modify 
 ```bash
 python3 tests/run_tests.py
 ```
+
+On a Mac with Swift and a graphical session, also run the isolated native inference and preference-persistence tests:
+
+```bash
+python3 tests/run_native_preferences.py
+```
+
+These native tests use a temporary preferences suite and do not configure the current app.
 
 ---
 
@@ -153,7 +190,8 @@ python3 install.py --configure-key --authorize-code-export --replace
 
 ## Documentation & Release Notices
 
-- [PRIVACY.md](PRIVACY.md) — Local file access, external network requests, and artifact hygiene.
+- [INSTALL_IN_CODEX.md](INSTALL_IN_CODEX.md) — Copyable Codex installation prompt, guided preference inference workflow, and precedence rules.
+- [PRIVACY.md](PRIVACY.md) — Local file access, appearance/OS preference reads and writes, external network requests, and artifact hygiene.
 - [SECURITY.md](SECURITY.md) — Credential permissions, consent enforcement, sandbox scope, and limitations.
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — External runtime dependencies and **unconfirmed provenance/licensing notice** for user-supplied Argon materials.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) — Blocking legal/licensing items and pre-release technical verification steps.

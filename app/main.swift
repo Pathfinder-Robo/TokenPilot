@@ -1515,6 +1515,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
         let arguments = CommandLine.arguments
+        if let code = handleInstallationPreferenceCommand(arguments, appearance: appearance) { exit(Int32(code)) }
         if arguments.contains("--ui-checks") {
             let ok = runSelfChecks()
             exit(ok ? 0 : 1)
