@@ -1,0 +1,73 @@
+# Defense-in-depth exclusions for local builds, runtime state, and credentials.
+# These rules help prevent accidental commits of local artifacts; they are not
+# a license grant or a substitute for pre-release secret/privacy review.
+
+# Workspace & build artifacts
+work/
+dist/
+*.app/
+.build/
+.module-cache/
+app/.module-cache/
+*.iconset/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Machine-specific runtime config
+runtime.json
+**/runtime.json
+
+# Credentials & environment files
+credentials.env
+**/credentials.env
+.env
+.env.*
+
+# Local authorization, installation, and viewer state/logs
+authorization.json
+**/authorization.json
+installation.json
+**/installation.json
+auth.json
+**/auth.json
+routing.json
+**/routing.json
+outcomes.jsonl
+**/outcomes.jsonl
+runs.jsonl
+**/runs.jsonl
+usage-cache/
+**/usage-cache/
+quota-history.json
+**/quota-history.json
+nextreset-cache.json
+**/nextreset-cache.json
+ui-state.json
+**/ui-state.json
+backups/
+**/backups/
+
+# Worker interaction & result artifacts
+interaction-*.json
+**/interaction-*.json
+result.json
+**/result.json
+tools.json
+**/tools.json
+changes.patch
+**/changes.patch
+final.txt
+**/final.txt
+
+# Additional local profiles, raw logs, keys and captures
+.codex/
+.agents/
+.ssh/
+sessions/
+archived_sessions/
+screenshots/
+captures/
+*.log
+*.jsonl
+.env*

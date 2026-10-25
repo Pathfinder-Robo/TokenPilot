@@ -1,0 +1,50 @@
+{
+  "version": "NR-1.7",
+  "asOf": "2026-10-25T05:05:21.971Z",
+  "expiresAt": "2026-10-25T05:20:21.971Z",
+  "state": "announced",
+  "degraded": false,
+  "checks": {
+    "history": {
+      "ok": true,
+      "at": "2026-10-25T05:05:21.971Z",
+      "source": "https://example.invalid/api/resets"
+    },
+    "social": {
+      "ok": true,
+      "at": "2026-10-25T05:05:21.971Z",
+      "source": "https://example.invalid/api/status"
+    },
+    "context": {
+      "ok": true,
+      "at": "2026-10-25T05:05:21.971Z",
+      "source": "https://example.invalid/api/incidents"
+    }
+  },
+  "windows": [
+    {
+      "hours": 24,
+      "probability": 0.95
+    },
+    {
+      "hours": 48,
+      "probability": 0.97
+    },
+    {
+      "hours": 72,
+      "probability": 0.98
+    }
+  ],
+  "history": {
+    "last": {
+      "date": "2026-10-23T17:00:00.000Z",
+      "source": "https://example.invalid/history/1"
+    }
+  },
+  "social": {
+    "publishedAt": "2026-10-25T03:40:04.000Z",
+    "expectedBy": "2026-10-25T07:00:00.000Z",
+    "source": "https://x.com/example/status/123",
+    "carriedFromLastGoodCheck": false
+  }
+}

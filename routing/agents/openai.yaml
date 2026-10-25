@@ -1,0 +1,5 @@
+interface:
+  display_name: "Argon Task Routing"
+  short_description: "Delegate suitable coding tasks to Argon high with Codex review"
+policy:
+  allow_implicit_invocation: true
