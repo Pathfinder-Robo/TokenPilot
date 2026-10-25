@@ -228,7 +228,7 @@ struct RoutingView: View {
         .padding(.top, model.collapsed ? 10 : 12)
         .padding(.bottom, model.collapsed ? 10 : 12)
         .frame(width: model.collapsed ? 300 : 360)
-        .environment(\.colorScheme, palette.isDark ? .dark : .light)
+
         .gaussianFrostField(enabled: palette.materialKind == .liquidGlassEffect)
         .modifier(
             LiquidGlassPanelSurfaceModifier(palette: palette, cornerRadius: corner)
@@ -266,7 +266,7 @@ struct RoutingView: View {
                 .lineLimit(1)
 
             Circle()
-                .fill(model.connected ? palette.statusGreenRGB.color : palette.dangerRedRGB.color)
+                .fill(model.connected ? palette.statusGreenColor : palette.dangerRedColor)
                 .frame(width: 6, height: 6)
                 .help(model.connected ? loc.L("Connected", "已连接") : loc.L("Disconnected", "未连接"))
                 .accessibilityLabel(model.connected ? loc.L("Connected", "已连接") : loc.L("Disconnected", "未连接"))
@@ -372,7 +372,7 @@ struct RoutingView: View {
 
         return HStack(spacing: 6) {
             FrostText("Codex \(codexStr)")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11, weight: appearance.theme == .liquid ? .semibold : .medium))
                 .monospacedDigit()
                 .foregroundStyle(codex?.available == true ? palette.primaryTextColor : palette.secondaryTextColor)
                 .lineLimit(1)
@@ -383,7 +383,7 @@ struct RoutingView: View {
                 .frame(minWidth: 24, maxWidth: .infinity)
 
             FrostText("\(geminiStr) Gemini")
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 11, weight: appearance.theme == .liquid ? .semibold : .medium))
                 .monospacedDigit()
                 .foregroundStyle(gemini?.available == true ? palette.primaryTextColor : palette.secondaryTextColor)
                 .lineLimit(1)
@@ -402,13 +402,13 @@ struct RoutingView: View {
             HStack(spacing: 5) {
                 if resetComesFirst {
                     Circle()
-                        .fill(palette.statusGreenRGB.color)
+                        .fill(palette.statusGreenColor)
                         .frame(width: 6, height: 6)
                 }
                 FrostText(selection.label)
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
-                    .foregroundStyle(resetComesFirst ? palette.statusGreenRGB.color : palette.primaryTextColor)
+                    .foregroundStyle(resetComesFirst ? palette.statusGreenColor : palette.primaryTextColor)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
@@ -418,7 +418,7 @@ struct RoutingView: View {
                 .frame(minWidth: 48, maxWidth: .infinity)
 
             FrostText(selection.percentText)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 11, weight: appearance.theme == .liquid ? .bold : .semibold))
                 .monospacedDigit()
                 .foregroundStyle(selection.available ? palette.primaryTextColor : palette.secondaryTextColor)
                 .lineLimit(1)
@@ -504,11 +504,11 @@ struct RoutingView: View {
                 if let geminiStatus = geminiStatusLine {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(geminiStatus.isAlert ? palette.warningOrangeRGB.color : palette.statusGreenRGB.color)
+                            .fill(geminiStatus.isAlert ? palette.warningOrangeColor : palette.statusGreenColor)
                             .frame(width: 6, height: 6)
                         FrostText(geminiStatus.text)
                             .font(.system(size: 11, weight: geminiStatus.isAlert ? .medium : .regular))
-                            .foregroundStyle(geminiStatus.isAlert ? palette.warningOrangeRGB.color : palette.secondaryTextColor)
+                            .foregroundStyle(geminiStatus.isAlert ? palette.warningOrangeColor : palette.secondaryTextColor)
                             .lineLimit(2)
                             .multilineTextAlignment(.trailing)
                             .fixedSize(horizontal: false, vertical: true)
@@ -813,7 +813,7 @@ struct RoutingView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 if resetComesFirst {
                     Circle()
-                        .fill(palette.statusGreenRGB.color)
+                        .fill(palette.statusGreenColor)
                         .frame(width: 6, height: 6)
                 } else {
                     Image(systemName: "chart.line.uptrend.xyaxis")
@@ -823,7 +823,7 @@ struct RoutingView: View {
 
                 FrostText(info.primary)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(resetComesFirst ? palette.statusGreenRGB.color : palette.primaryTextColor)
+                    .foregroundStyle(resetComesFirst ? palette.statusGreenColor : palette.primaryTextColor)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -923,7 +923,7 @@ struct RoutingView: View {
         } label: {
             HStack(spacing: 4) {
                 FrostText(title)
-                    .font(.system(size: model.collapsed ? 11 : 12, weight: .medium))
+                    .font(.system(size: model.collapsed ? 11 : 12, weight: appearance.theme == .liquid ? .semibold : .medium))
                     .monospacedDigit()
                     .foregroundStyle(model.connected ? palette.readablePrimaryTextColor : palette.secondaryTextColor.opacity(0.6))
                     .lineLimit(1)
@@ -938,7 +938,7 @@ struct RoutingView: View {
             .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
-        .font(.system(size: model.collapsed ? 11 : 12, weight: .medium))
+        .font(.system(size: model.collapsed ? 11 : 12, weight: appearance.theme == .liquid ? .semibold : .medium))
         .controlSize(model.collapsed ? .small : .regular)
         .menuIndicator(.hidden)
         .buttonStyle(.plain)
@@ -989,12 +989,12 @@ struct RoutingView: View {
             if model.snapshot?.limits.stale == true {
                 FrostText(loc.L("· Stale", "· 缓存过期"))
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(palette.warningOrangeRGB.color)
+                    .foregroundStyle(palette.warningOrangeColor)
                     .lineLimit(1)
             } else if let limitErr = model.snapshot?.limits.error, !limitErr.isEmpty {
                 FrostText(loc.L("· Quota error", "· 配额异常"))
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(palette.warningOrangeRGB.color)
+                    .foregroundStyle(palette.warningOrangeColor)
                     .lineLimit(1)
                     .help(limitErr)
             }
@@ -1078,8 +1078,8 @@ struct RoutingView: View {
         let fillColor: Color = !available
             ? palette.trackColor
             : (clamped <= 0.10
-                ? palette.dangerRedRGB.color
-                : (clamped <= 0.25 ? palette.warningOrangeRGB.color : palette.rawPrimaryColor))
+                ? palette.dangerRedColor
+                : (clamped <= 0.25 ? palette.warningOrangeColor : palette.rawPrimaryColor))
 
         return GeometryReader { geo in
             let w = max(geo.size.width, 0)

@@ -111,17 +111,17 @@ struct NextResetCardView: View {
             if let warningBadge = model.warningBadgeText {
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(palette.warningOrangeRGB.color)
+                        .fill(palette.warningOrangeColor)
                         .frame(width: 5, height: 5)
                     FrostText(warningBadge)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(palette.warningOrangeRGB.color)
+                        .foregroundStyle(palette.warningOrangeColor)
                         .lineLimit(1)
                 }
             } else if model.isAvailable {
                 HStack(spacing: 4) {
                     Circle()
-                        .fill(model.isAnnounced ? palette.statusGreenRGB.color : palette.secondaryTextColor.opacity(0.75))
+                        .fill(model.isAnnounced ? palette.statusGreenColor : palette.secondaryTextColor.opacity(0.75))
                         .frame(width: 5, height: 5)
                     FrostText(
                         model.isAnnounced
@@ -140,7 +140,7 @@ struct NextResetCardView: View {
     private func heroRow(model: NextResetCardPresentation) -> some View {
         HStack(alignment: .center, spacing: 10) {
             FrostText(model.probability24Text)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 32, weight: palette.theme == .liquid ? .semibold : .bold, design: palette.theme == .liquid ? .default : .rounded))
                 .monospacedDigit()
                 .foregroundStyle(model.isAvailable ? palette.primaryTextColor : palette.secondaryTextColor)
                 .lineLimit(1)
@@ -160,7 +160,7 @@ struct NextResetCardView: View {
                 }
 
                 FrostText(model.chanceCaption)
-                    .font(.system(size: 10.5, weight: .regular))
+                    .font(.system(size: 10.5, weight: palette.theme == .liquid ? .medium : .regular))
                     .foregroundStyle(palette.secondaryTextColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.88)
@@ -176,7 +176,7 @@ struct NextResetCardView: View {
                 .fill(
                     model.isCountdownElapsed
                         ? palette.secondaryTextColor.opacity(0.85)
-                        : palette.statusGreenRGB.color
+                        : palette.statusGreenColor
                 )
                 .frame(width: 5, height: 5)
 
@@ -200,7 +200,7 @@ struct NextResetCardView: View {
                 probabilityChip(label: model.label48h, value: model.probability48Text)
 
                 FrostText("·")
-                    .font(.system(size: 10.5, weight: .regular))
+                    .font(.system(size: 10.5, weight: palette.theme == .liquid ? .medium : .regular))
                     .foregroundStyle(palette.secondaryTextColor)
                     .lineLimit(1)
 
@@ -235,7 +235,7 @@ struct NextResetCardView: View {
     private func probabilityChip(label: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             FrostText(label)
-                .font(.system(size: 10.5, weight: .regular))
+                .font(.system(size: 10.5, weight: palette.theme == .liquid ? .medium : .regular))
                 .foregroundStyle(palette.secondaryTextColor)
                 .lineLimit(1)
 
@@ -249,13 +249,13 @@ struct NextResetCardView: View {
 
     private func statusIndicatorColor(model: NextResetCardPresentation) -> Color {
         if !model.isAvailable {
-            return palette.warningOrangeRGB.color
+            return palette.warningOrangeColor
         }
         if model.isAnnounced {
-            return model.isStaleOrDelayed ? palette.warningOrangeRGB.color : palette.statusGreenRGB.color
+            return model.isStaleOrDelayed ? palette.warningOrangeColor : palette.statusGreenColor
         }
         if model.isStaleOrDelayed {
-            return palette.warningOrangeRGB.color
+            return palette.warningOrangeColor
         }
         return palette.secondaryTextColor
     }

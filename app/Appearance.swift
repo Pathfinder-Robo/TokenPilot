@@ -370,13 +370,19 @@ struct ResolvedThemePalette: Sendable {
     var surfaceColor: Color { surfaceRGB.color }
     var insetColor: Color { insetRGB.color }
     var borderColor: Color { borderRGB.color }
-    var trackColor: Color { trackRGB.color }
-    var primaryTextColor: Color { primaryTextRGB.color }
-    var secondaryTextColor: Color { secondaryTextRGB.color }
+    var trackColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .separatorColor) : trackRGB.color }
+    var primaryTextColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .textColor) : primaryTextRGB.color }
+    var secondaryTextColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .textColor).opacity(0.68) : secondaryTextRGB.color }
     var rawPrimaryColor: Color { rawPrimaryRGB.color }
     var rawSecondaryColor: Color { rawSecondaryRGB.color }
-    var readablePrimaryTextColor: Color { readablePrimaryTextRGB.color }
-    var readableSecondaryTextColor: Color { readableSecondaryTextRGB.color }
+    var readablePrimaryTextColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .textColor) : readablePrimaryTextRGB.color }
+    var readableSecondaryTextColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .textColor).opacity(0.68) : readableSecondaryTextRGB.color }
+
+    var statusGreenColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .systemGreen) : statusGreenRGB.color }
+
+    var warningOrangeColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .systemOrange) : warningOrangeRGB.color }
+
+    var dangerRedColor: Color { materialKind == .liquidGlassEffect ? Color(nsColor: .systemRed) : dangerRedRGB.color }
 
     static let liveGreenRGB = RGBColor(hex: "#24AD62")!
     static let darkLiveGreenRGB = RGBColor(hex: "#28BC6D")!

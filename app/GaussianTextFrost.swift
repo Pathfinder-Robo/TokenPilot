@@ -137,8 +137,8 @@ public struct GaussianFrostLobe: Hashable, Sendable {
 public enum GaussianFrostMask {
     /// Maximum field opacity cap so frost never becomes a hard solid slab.
     public static let maxOpacity: Double = 0.96
-    /// Maximum final composited white-wash opacity (`baseWhiteOpacity * maxOpacity <= 0.70`).
-    public static let maxWhiteOpacity: Double = 0.70
+    /// Maximum final composited white-wash opacity (`baseWhiteOpacity * maxOpacity <= 0.36`).
+    public static let maxWhiteOpacity: Double = 0.36
     /// Smooth rim fade distance in points from the outer card edges.
     public static let rimFadeInset: CGFloat = 8.0
     /// Target horizontal spacing in points per elliptical lobe along a region's baseline.
@@ -845,17 +845,19 @@ public final class GaussianFrostBackgroundView: NSView {
 
     public private(set) var currentMaskCGImage: CGImage?
     public var baseWhiteOpacity: Float { baseWhiteLayer.opacity }
-    /// Maximum final composited frost-group opacity (`Double(whiteOpacity) * GaussianFrostMask.maxOpacity <= 0.70`).
+    /// Maximum final composited frost-group opacity (`Double(whiteOpacity) * GaussianFrostMask.maxOpacity <= 0.36`).
     /// With a single parent `CALayer` mask (`layer?.mask = washMaskLayer`) and parent `alphaValue = CGFloat(whiteOpacity)`,
     /// the entire native frost group (backdrop blur material + white-wash overlay) multiplied by the 8-bit mask
-    /// (`<= 244 / 255 <= 0.96`) is strictly bounded at `<= 0.70` even over an opaque internal material.
+    /// (`<= 244 / 255 <= 0.96`) is strictly bounded at `<= 0.36` even over an opaque internal material.
     public static let maxWhiteOpacity: Double = GaussianFrostMask.maxWhiteOpacity
-    /// Unmasked group & white-wash opacity derived from `maxWhiteOpacity / GaussianFrostMask.maxOpacity` (`0.70 / 0.96`).
+    /// Unmasked group & white-wash opacity derived from `maxWhiteOpacity / GaussianFrostMask.maxOpacity` (`0.36 / 0.96`).
     public static let whiteOpacity: Float = {
         let raw = Float(maxWhiteOpacity / GaussianFrostMask.maxOpacity)
         return Double(raw) * GaussianFrostMask.maxOpacity > maxWhiteOpacity ? raw.nextDown : raw
     }()
-    public static let effectAlpha: CGFloat = 0.76
+    // The approved Liquid Glass theme adds only a soft contrast wash.
+    // Native NSGlassEffectView supplies the optics; no extra text blur is mounted.
+    public static let effectAlpha: CGFloat = 0.0
 
     override public var isFlipped: Bool { true }
 
@@ -905,7 +907,7 @@ public final class GaussianFrostBackgroundView: NSView {
         effectView.isEmphasized = false
         effectView.maskImage = nil
         effectView.isHidden = true
-        addSubview(effectView)
+        if Self.effectAlpha > 0 { addSubview(effectView) }
 
         // 2. Flipped white-wash container participating in the shared parent CALayer mask.
         washContainerView.frame = bounds
@@ -1015,7 +1017,7 @@ public final class GaussianFrostBackgroundView: NSView {
             if layer?.mask !== washMaskLayer {
                 layer?.mask = washMaskLayer
             }
-            effectView.isHidden = false
+            effectView.isHidden = Self.effectAlpha == 0
             washContainerView.isHidden = false
             return
         }
@@ -1043,7 +1045,7 @@ public final class GaussianFrostBackgroundView: NSView {
         if layer?.mask !== washMaskLayer {
             layer?.mask = washMaskLayer
         }
-        effectView.isHidden = false
+        effectView.isHidden = Self.effectAlpha == 0
         washContainerView.isHidden = false
         CATransaction.commit()
     }

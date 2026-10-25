@@ -8,6 +8,7 @@ private enum NativePublicGlassStyle: Int { case regular = 0, clear = 1 }
 final class LiquidGlassInnerHostingView: NSHostingView<AnyView> {
     var suppressIntrinsicInvalidation = false
 
+    override var allowsVibrancy: Bool { true }
     override var isOpaque: Bool { false }
     override var mouseDownCanMoveWindow: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -64,7 +65,7 @@ final class LiquidGlassHostView: NSView {
         fallback.material = .popover
         fallback.blendingMode = .behindWindow
         fallback.state = .active
-        fallback.appearance = NSAppearance(named: .aqua)
+        fallback.appearance = nil
         fallback.wantsLayer = true
         fallback.layer?.cornerCurve = .continuous
         fallback.layer?.masksToBounds = true
@@ -108,7 +109,7 @@ final class LiquidGlassHostView: NSView {
     }
 
     private func configureEffectView(_ ev: NSView, cornerRadius: CGFloat, tintColor: NSColor?) {
-        ev.appearance = NSAppearance(named: .aqua)
+        ev.appearance = nil
         // Keep custom glass independent of focus/hover interactions.
         if ev.responds(to: NSSelectorFromString("setEffectIsInteractive:")) {
             ev.setValue(false, forKey: "effectIsInteractive")
@@ -216,17 +217,16 @@ struct LiquidGlassPanelSurfaceModifier: ViewModifier {
             LiquidGlassContentRepresentable(
                 cornerRadius: cornerRadius,
                 tintColor: nil,
-                content: AnyView(
-                    content.environment(\.colorScheme, palette.isDark ? .dark : .light)
-                )
+                content: AnyView(content)
             )
-            .environment(\.colorScheme, palette.isDark ? .dark : .light)
+
         } else {
             content
                 .background(
                     WidgetSurfaceBackground(palette: palette, cornerRadius: cornerRadius)
                 )
                 .environment(\.colorScheme, palette.isDark ? .dark : .light)
+
         }
     }
 }

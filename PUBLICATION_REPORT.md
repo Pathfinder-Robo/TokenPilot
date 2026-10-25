@@ -4,6 +4,9 @@ This source-only private repository contains the TokenPilot app, optional Gemini
 
 ## Latest verification
 
+- Version 2.7 adopts the approved native clear Liquid Glass styling: adaptive text colors, stronger typography and a faint contrast wash with no added text blur. Other themes and the solid accessibility fallback keep their own palettes.
+- All 144 independent native glass/layout checks passed across English/Chinese and light/dark appearances, including compact geometry and accessibility fallback.
+
 - All 69 portable Python tests passed, including appearance inference orchestration, missing-answer handling, cancellation, malformed responses and bounded subprocess failures.
 - All 42 isolated native preference tests passed: saved and explicit preference precedence, language/script support, light/dark defaults, partial saved records, read-only inspection, invalid inputs, first-install persistence, and retention of custom palettes.
 - Native macOS build succeeded and all 164 existing app self-checks passed. Build outputs were created outside this source tree.

@@ -22,9 +22,9 @@ TokenPilot can be built and used standalone with Codex alone—installing the op
   - Writes `${CODEX_HOME:-~/.codex}/argon/routing.json` (`0600`) to guide how Codex delegates *new* substantive coding tasks when the optional `argon-routing` skill is installed.
   - **Delegation preference, not an automatic proxy or token allocator**: Moving the slider does not proxy API traffic, split token budgets, or interrupt active workers. Setting the slider to `0%` (**GPT only**) causes the bundled worker launcher (`run_worker.py`) to block new Gemini worker runs before any network call.
 - **6 Themes, Bilingual UI (EN / 中文), Native Glass & Focus Behavior**
-  - **6 Themes**: *Cupertino*, *Quiet Graphite* (default), *Instrument* (high-contrast monochrome grid; custom colors disabled), *Frosted Glass*, *Liquid Glass*, and *Vibrant*, with automatic WCAG contrast enforcement and per-theme custom primary/secondary hex colors.
+  - **6 Themes**: *Cupertino*, *Quiet Graphite* (default), *Instrument* (high-contrast monochrome grid; custom colors disabled), *Frosted Glass*, *Liquid Glass*, and *Vibrant*, with per-theme custom primary/secondary hex colors. Solid palettes enforce contrast against their defined surfaces; native Liquid Glass uses adaptive system text colors.
   - **Bilingual**: Full **English (`en`)** and **Simplified Chinese (`zh-Hans`)** interface localization.
-  - **Native macOS SwiftUI/AppKit (Not a Browser Wrapper)**: Built directly with AppKit and SwiftUI targeting **macOS 15.0+**. Native Liquid Glass can change appearance when its window becomes inactive; AppKit supplies the reflections and refraction. When the *Liquid Glass* theme is active on **macOS 26+**, TokenPilot uses a runtime check (`NSClassFromString("NSGlassEffectView")`) to host content inside native `NSGlassEffectView` with a Gaussian text-frost backing field, and automatically falls back to `NSVisualEffectView` on macOS 15.
+  - **Native macOS SwiftUI/AppKit (Not a Browser Wrapper)**: Built directly with AppKit and SwiftUI targeting **macOS 15.0+**. Native Liquid Glass can change appearance when its window becomes inactive; AppKit supplies the reflections and refraction. When the *Liquid Glass* theme is active on **macOS 26+**, TokenPilot uses a runtime check (`NSClassFromString("NSGlassEffectView")`) to host content inside native `NSGlassEffectView` with a faint Gaussian contrast wash, adaptive system text colors, and stronger type hierarchy; it adds no separate text blur, and automatically falls back to `NSVisualEffectView` on macOS 15.
   - **Non-Activating Focus Behavior**: The floating widget runs as a `.nonactivatingPanel` so dragging the panel, collapsing/expanding, or adjusting the routing slider does not steal focus from your active IDE or terminal. Opening **Customize…** activates a standard key window for color and theme editing.
 
 ---
@@ -39,7 +39,7 @@ TokenPilot can be built and used standalone with Codex alone—installing the op
 │   ├── Appearance.swift              # 6 themes, WCAG contrast engine, EN/zh-Hans localization, Customize UI
 │   ├── InstallationPreferences.swift # Guided install preference inference & CLI (--inspect/--configure-install-preferences)
 │   ├── LiquidGlassContent.swift      # macOS 26+ NSGlassEffectView runtime bridge & macOS 15 fallback
-│   ├── GaussianTextFrost.swift       # Weighted 2D Gaussian text-legibility frost field for Liquid Glass
+│   ├── GaussianTextFrost.swift       # Soft Gaussian text-contrast wash for Liquid Glass (no extra text blur)
 │   ├── NextResetCardView.swift       # SwiftUI card presentation for public NextReset forecast data
 │   ├── Icon.swift                    # Standalone AppKit iconset generator (asset utility, not app entry)
 │   ├── TokenPilot.icns               # App bundle icon
