@@ -63,6 +63,23 @@ class LinuxBuildAndRuntimeTests(unittest.TestCase):
         self.assertTrue((self.app_dir / "Contents" / "Resources" / "runtime.json").is_file())
         self.assertTrue((self.app_dir / "Contents" / "Resources" / "bridge.py").is_file())
         self.assertTrue((self.app_dir / "Contents" / "Resources" / "linux_app.py").is_file())
+        self.assertTrue((self.app_dir / "Contents" / "Resources" / "linux_panel.py").is_file())
+
+        import linux_panel
+        strings = linux_panel.build_widget_tooltip_and_strings(
+            {
+                "codex": {"total_tokens": 51_200_000, "cached_tokens": 50_100_000, "available": True},
+                "gemini": {"total_tokens": 148_000, "cached_tokens": 51_800, "available": True, "status": "completed"},
+                "routing": {"gemini_percent": 70},
+                "limits": {"five_hour": {"used_percent": 26.0, "resets_at": 1_800_000_000}},
+                "forecast": {"status": "reset_before_projection", "headline": "Next reset comes first"},
+                "nextreset": {"probability_24h": 0.96, "announcement_state": "announced"},
+            },
+            language="en",
+        )
+        self.assertEqual(strings["codex_val"], "51.2M")
+        self.assertEqual(strings["nr_prob24"], "96%")
+        self.assertIn("74% remaining", strings["five_info"]["tooltip"])
 
         checks_res = subprocess.run(
             [str(executable), "--ui-checks"],
@@ -155,6 +172,7 @@ class LinuxBuildAndRuntimeTests(unittest.TestCase):
                 "127.0.0.1",
                 "--offline",
                 "--no-browser",
+                "--no-panel",
             ],
             env=env,
             stdout=subprocess.PIPE,

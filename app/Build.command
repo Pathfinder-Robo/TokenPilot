@@ -23,15 +23,17 @@ fi
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$MODULE_CACHE_DIR"
 
-for MODULE in bridge.py forecasting.py nextreset.py linux_app.py; do
+for MODULE in bridge.py forecasting.py nextreset.py linux_app.py linux_panel.py; do
   if [ -f "$SOURCE_DIR/$MODULE" ]; then
     cp "$SOURCE_DIR/$MODULE" "$APP_DIR/Contents/Resources/$MODULE"
   fi
 done
 chmod 755 "$APP_DIR/Contents/Resources/bridge.py"
-if [ -f "$APP_DIR/Contents/Resources/linux_app.py" ]; then
-  chmod 755 "$APP_DIR/Contents/Resources/linux_app.py"
-fi
+for EXEC_MOD in linux_app.py linux_panel.py; do
+  if [ -f "$APP_DIR/Contents/Resources/$EXEC_MOD" ]; then
+    chmod 755 "$APP_DIR/Contents/Resources/$EXEC_MOD"
+  fi
+done
 chmod 644 "$APP_DIR/Contents/Resources/forecasting.py" "$APP_DIR/Contents/Resources/nextreset.py"
 
 if [ -f "$ROOT_DIR/examples/design-preview.html" ]; then

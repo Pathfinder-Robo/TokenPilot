@@ -1134,6 +1134,64 @@ def run_self_checks() -> bool:
 
 LIVE_UI_SCRIPT = r"""
 (function() {
+  // 1. Custom Rich Hover Tooltip Card (macOS-style hover card on any widget element with [title])
+  const hoverCard = document.createElement('div');
+  hoverCard.id = 'tp-hover-card';
+  hoverCard.setAttribute('role', 'tooltip');
+  hoverCard.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;max-width:320px;padding:10px 13px;border-radius:10px;background:rgba(24,26,32,0.96);color:#f2f5fa;border:1px solid rgba(255,255,255,0.16);box-shadow:0 12px 28px rgba(0,0,0,0.35);font-size:11.5px;line-height:1.45;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);opacity:0;transform:translateY(4px);transition:opacity 0.12s ease,transform 0.12s ease;display:none;white-space:pre-line;';
+  document.body.appendChild(hoverCard);
+
+  let activeHoverEl = null;
+  document.addEventListener('mouseover', e => {
+    const target = e.target.closest('[title], [data-tp-tooltip]');
+    if (!target) return;
+    if (target.hasAttribute('title')) {
+      const raw = target.getAttribute('title');
+      if (raw) {
+        target.setAttribute('data-tp-tooltip', raw);
+        target.removeAttribute('title');
+      }
+    }
+    const tip = target.getAttribute('data-tp-tooltip');
+    if (!tip) return;
+    activeHoverEl = target;
+    hoverCard.textContent = tip;
+    hoverCard.style.display = 'block';
+    requestAnimationFrame(() => {
+      hoverCard.style.opacity = '1';
+      hoverCard.style.transform = 'translateY(0)';
+    });
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!activeHoverEl || hoverCard.style.display === 'none') return;
+    const pad = 14;
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    const rect = hoverCard.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth - 12) x = Math.max(12, e.clientX - rect.width - pad);
+    if (y + rect.height > window.innerHeight - 12) y = Math.max(12, e.clientY - rect.height - pad);
+    hoverCard.style.left = x + 'px';
+    hoverCard.style.top = y + 'px';
+  });
+
+  document.addEventListener('mouseout', e => {
+    if (activeHoverEl && !activeHoverEl.contains(e.relatedTarget)) {
+      activeHoverEl = null;
+      hoverCard.style.opacity = '0';
+      hoverCard.style.transform = 'translateY(4px)';
+      setTimeout(() => {
+        if (!activeHoverEl) hoverCard.style.display = 'none';
+      }, 120);
+    }
+  });
+
+  // 2. Floating Hover Card Overlay Mode ("Float Card Mode" vs "All 6 Themes Studio")
+  let floatingDock = document.createElement('div');
+  floatingDock.id = 'tp-floating-hover-dock';
+  floatingDock.style.cssText = 'position:fixed;top:18px;right:22px;z-index:9990;filter:drop-shadow(0 16px 36px rgba(0,0,0,0.34));transition:transform 0.15s ease;';
+  document.body.appendChild(floatingDock);
+
   let liveBanner = document.createElement('div');
   liveBanner.id = 'tokenpilot-live-bar';
   liveBanner.style.cssText = 'max-width:848px;margin:0 auto 20px;padding:12px 18px;border-radius:12px;background:#1e293b;color:#f8fafc;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.12);';
@@ -1141,16 +1199,73 @@ LIVE_UI_SCRIPT = r"""
     <div style="display:flex;align-items:center;gap:10px;">
       <span id="tp-live-dot" style="width:8px;height:8px;border-radius:50%;background:#28bc6d;display:inline-block;"></span>
       <strong id="tp-live-title">TokenPilot Live Linux Runtime</strong>
-      <span id="tp-live-status" style="color:#94a3b8;font-size:12px;">Connected to local collector (bridge.py)</span>
+      <span id="tp-live-status" style="color:#94a3b8;font-size:12px;">Native GTK Floating Hover Card + Web Studio Active</span>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;font-size:12px;">
+    <div style="display:flex;align-items:center;gap:10px;font-size:12px;flex-wrap:wrap;">
       <span id="tp-live-summary" style="color:#cbd5e1;font-family:var(--mono);"></span>
+      <button type="button" id="tp-toggle-float-btn" style="border:1px solid #38bdf8;background:#0284c7;color:#ffffff;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:500;cursor:pointer;">Pin Floating Hover Card</button>
       <button type="button" id="tp-live-refresh-btn" style="border:1px solid #475569;background:#334155;color:#f8fafc;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;">Refresh Collector</button>
     </div>
   `;
   const headerEl = document.querySelector('.board-header');
   if (headerEl && headerEl.parentNode) {
     headerEl.parentNode.insertBefore(liveBanner, headerEl.nextSibling);
+  }
+
+  let floatPinned = false;
+  let floatCollapsed = false;
+
+  function renderFloatingHoverCard() {
+    if (!floatPinned) {
+      floatingDock.innerHTML = '';
+      floatingDock.style.display = 'none';
+      return;
+    }
+    floatingDock.style.display = 'block';
+    const themeId = (typeof state !== 'undefined' && state.activeTheme) ? state.activeTheme : 'graphite';
+    const selector = `.widget[data-theme="${themeId}"][data-mode="${floatCollapsed ? 'collapsed' : 'expanded'}"]`;
+    const sourceWidget = document.querySelector(selector);
+    if (!sourceWidget) return;
+    const stageClone = sourceWidget.closest('.widget-stage').cloneNode(true);
+    floatingDock.innerHTML = '';
+    const dragBar = document.createElement('div');
+    dragBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 10px;margin-bottom:4px;border-radius:8px;background:rgba(15,23,42,0.88);color:#e2e8f0;font-size:11px;cursor:move;user-select:none;';
+    dragBar.innerHTML = `<span>⠿ Floating Hover Card (${themeId})</span><div style="display:flex;gap:6px;"><button type="button" id="tp-float-mode-btn" style="border:0;background:transparent;color:#93c5fd;cursor:pointer;font-size:11px;">${floatCollapsed ? 'Expand' : 'Collapse'}</button><button type="button" id="tp-float-close-btn" style="border:0;background:transparent;color:#fca5a5;cursor:pointer;font-size:11px;">✕</button></div>`;
+    floatingDock.appendChild(dragBar);
+    floatingDock.appendChild(stageClone);
+
+    let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+    dragBar.addEventListener('mousedown', ev => {
+      if (ev.target.tagName === 'BUTTON') return;
+      dragging = true;
+      const r = floatingDock.getBoundingClientRect();
+      floatingDock.style.right = 'auto';
+      floatingDock.style.left = r.left + 'px';
+      floatingDock.style.top = r.top + 'px';
+      startX = ev.clientX;
+      startY = ev.clientY;
+      origLeft = r.left;
+      origTop = r.top;
+    });
+    window.addEventListener('mousemove', ev => {
+      if (!dragging) return;
+      floatingDock.style.left = Math.max(8, origLeft + (ev.clientX - startX)) + 'px';
+      floatingDock.style.top = Math.max(8, origTop + (ev.clientY - startY)) + 'px';
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+
+    const modeBtn = floatingDock.querySelector('#tp-float-mode-btn');
+    if (modeBtn) modeBtn.addEventListener('click', () => { floatCollapsed = !floatCollapsed; renderFloatingHoverCard(); });
+    const closeBtn = floatingDock.querySelector('#tp-float-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', () => { floatPinned = false; renderFloatingHoverCard(); });
+  }
+
+  const toggleFloatBtn = document.getElementById('tp-toggle-float-btn');
+  if (toggleFloatBtn) {
+    toggleFloatBtn.addEventListener('click', () => {
+      floatPinned = !floatPinned;
+      renderFloatingHoverCard();
+    });
   }
 
   let latestSnapshot = null;
@@ -1235,10 +1350,12 @@ LIVE_UI_SCRIPT = r"""
         if (needsRender && typeof renderCustomizer === 'function' && typeof renderBoard === 'function') {
           renderCustomizer();
           renderBoard();
+          if (typeof renderFloatingHoverCard === 'function') renderFloatingHoverCard();
         }
       }
       if (data.snapshot) {
         applyLiveSnapshot(data.snapshot);
+        if (typeof renderFloatingHoverCard === 'function') renderFloatingHoverCard();
       }
     } catch (_) {}
   }
@@ -1330,7 +1447,14 @@ def load_runtime_config() -> dict[str, Any]:
     }
 
 
-def serve_ui(port: int = DEFAULT_PORT, host: str = "127.0.0.1", offline: bool = False, open_browser: bool = False) -> int:
+def serve_ui(
+    port: int = DEFAULT_PORT,
+    host: str = "127.0.0.1",
+    offline: bool = False,
+    open_browser: bool = False,
+    start_collapsed: bool = False,
+    enable_gtk_panel: bool = True,
+) -> int:
     runtime = load_runtime_config()
     codex_home = Path(os.environ.get("CODEX_HOME") or runtime.get("codex_home") or str(Path.home() / ".codex")).expanduser()
     codex_bin = os.environ.get("TOKENPILOT_CODEX_BIN") or runtime.get("codex_binary") or shutil.which("codex")
@@ -1470,6 +1594,22 @@ def serve_ui(port: int = DEFAULT_PORT, host: str = "127.0.0.1", offline: bool = 
     except Exception:
         pass
 
+    if enable_gtk_panel:
+        try:
+            import linux_panel
+
+            gtk_started = linux_panel.launch_gtk_floating_panel(
+                collector=collector,
+                appearance=appearance,
+                codex_home=codex_home,
+                web_url=url,
+                start_collapsed=start_collapsed,
+            )
+            if gtk_started:
+                print("TokenPilot native GTK3 floating hover card panel & tray indicator started.", flush=True)
+        except Exception as exc:
+            sys.stderr.write(f"Note: GTK floating panel unavailable ({exc}); using web UI.\n")
+
     if open_browser:
         _launch_linux_window(url)
 
@@ -1530,7 +1670,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=os.environ.get("TOKENPILOT_HOST", "127.0.0.1"))
     parser.add_argument("--offline", action="store_true", help="Disable live quota and NextReset network refreshes")
     parser.add_argument("--collapsed", action="store_true", help="Start in collapsed mode")
-    parser.add_argument("--no-browser", action="store_true", help="Do not open a desktop window automatically")
+    parser.add_argument("--no-browser", action="store_true", help="Do not open a desktop browser window automatically")
+    parser.add_argument("--no-panel", action="store_true", help="Disable the native GTK floating hover card panel")
     parser.add_argument("--daemon", action="store_true", help="Spawn the TokenPilot server in the background and exit")
     parsed, _ = parser.parse_known_args(args_list[1:])
 
@@ -1545,8 +1686,12 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if parsed.offline:
             cmd.append("--offline")
+        if parsed.collapsed:
+            cmd.append("--collapsed")
         if parsed.no_browser:
             cmd.append("--no-browser")
+        if parsed.no_panel:
+            cmd.append("--no-panel")
         subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
@@ -1560,6 +1705,8 @@ def main(argv: list[str] | None = None) -> int:
         host=parsed.host,
         offline=parsed.offline,
         open_browser=not parsed.no_browser,
+        start_collapsed=parsed.collapsed,
+        enable_gtk_panel=not parsed.no_panel,
     )
 
 
