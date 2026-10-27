@@ -1,4 +1,5 @@
 # Defense-in-depth exclusions for local builds, runtime state, and credentials.
+# 本地构建产物、运行时状态与凭据文件的纵深防御 Git 忽略规则。
 # These rules help prevent accidental commits of local artifacts; they are not
 # a license grant or a substitute for pre-release secret/privacy review.
 

@@ -1,4 +1,6 @@
-"""Small public NextReset summary. No browser scripts, votes, or account data."""
+"""Small public NextReset summary. No browser scripts, votes, or account data.
+NextReset 公共社区重置预测客户端与模式验证器；不发送账户数据或执行脚本。
+"""
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 import json

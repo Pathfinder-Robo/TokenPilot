@@ -1,3 +1,5 @@
+<!-- Privacy notice detailing local file access, preference storage, and network requests in TokenPilot. -->
+<!-- 详细说明 TokenPilot 本地文件访问、偏好存储及网络请求的隐私声明文档。 -->
 # Privacy Notice
 
 TokenPilot processes usage metadata and appearance preferences locally, with the explicitly described network requests below.

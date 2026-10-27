@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Install Argon high routing for this user; no network or model call."""
+"""Install Argon high routing for this user; no network or model call.
+为当前用户安装 Argon 高优任务路由技能；安装过程不发起网络或模型调用。
+"""
 import argparse
 from datetime import datetime, timezone
 import getpass

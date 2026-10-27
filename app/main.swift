@@ -1,3 +1,5 @@
+// Main floating panel, status bar item, collector IPC, and self-checks for TokenPilot on macOS.
+// TokenPilot 的 macOS 主悬浮面板、状态栏图标、收集器进程通信与内置自检入口。
 import AppKit
 import SwiftUI
 import Combine

@@ -1,3 +1,6 @@
+"""Integration tests for NextReset cache persistence, staleness, and fallback in bridge.py.
+bridge.py 中 NextReset 缓存持久化、过期状态与回退行为的集成测试。
+"""
 import json,sys,tempfile,time,unittest,urllib.error
 from pathlib import Path
 from datetime import datetime,timezone

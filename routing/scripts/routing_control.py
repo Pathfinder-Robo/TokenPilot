@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Live preference and numeric run registry used by the Argon launcher."""
+"""Live preference and numeric run registry used by the Argon launcher.
+供 Argon 启动器使用的实时路由偏好读取器与数值化运行状态注册模块。
+"""
 from datetime import datetime, timezone
 import json
 import hashlib

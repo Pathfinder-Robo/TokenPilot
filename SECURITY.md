@@ -1,3 +1,5 @@
+<!-- Security policy, credential controls, and sandbox boundaries for TokenPilot and the Argon worker. -->
+<!-- TokenPilot 与 Argon 工作进程的安全策略、凭据控制及沙盒边界文档。 -->
 # Security Policy & Controls
 
 ## No Full Security Guarantee

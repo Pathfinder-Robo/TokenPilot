@@ -1,3 +1,5 @@
+// Theme definitions, WCAG contrast math, localization, and customization UI for TokenPilot.
+// TokenPilot 的六款主题定义、WCAG 对比度计算、中英文界面本地化与外观自定义视图。
 import AppKit
 import SwiftUI
 import Combine

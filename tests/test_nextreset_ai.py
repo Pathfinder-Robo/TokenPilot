@@ -1,3 +1,6 @@
+"""Unit tests for NextReset JSON/HTML parsing, expiry validation, and HTTPS signal URLs.
+NextReset 预测 JSON/HTML 解析、过期校验与 HTTPS 信号链接的单元测试。
+"""
 import copy
 from datetime import datetime, timezone
 import json

@@ -1,3 +1,5 @@
+# Skill metadata for Codex discovery of the optional Argon task-routing workflow.
+# 供 Codex 发现可选 Argon 任务路由工作流的技能元数据配置。
 interface:
   display_name: "Argon Task Routing"
   short_description: "Delegate suitable coding tasks to Argon high with Codex review"

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Guided installation preference inspector and configurator for TokenPilot."""
+"""Guided installation preference inspector and configurator for TokenPilot.
+TokenPilot 的引导式安装外观偏好检查与配置工具。
+"""
 
 from __future__ import annotations
 
@@ -641,7 +643,10 @@ def _main(
         safe_output["custom_colors"] = custom_colors
 
     if args.launch:
-        launch_cmd: list[str] = ["open", "-a", str(bundle_path)]
+        if run_process is None and sys.platform.startswith("linux"):
+            launch_cmd = [str(executable_path), "--daemon"]
+        else:
+            launch_cmd = ["open", "-a", str(bundle_path)]
         launch_proc = runner(
             launch_cmd,
             capture_output=True,
@@ -681,7 +686,7 @@ def main(argv=None, *, run_process=None, input_fn=None, is_tty=None, stdout=None
     def bounded_run(command, **kwargs):
         nonlocal stage
         stage = ("configuration" if "--configure-install-preferences" in command
-                 else "launch" if command[:2] == ["open", "-a"] else "inspection")
+                 else "launch" if (command[:2] == ["open", "-a"] or "--daemon" in command) else "inspection")
         kwargs.setdefault("timeout", 20)
         return delegate(command, **kwargs)
 

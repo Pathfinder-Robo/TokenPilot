@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Portable test runner for TokenPilot and the optional Argon routing scripts."""
+"""Portable test runner for TokenPilot and the optional Argon routing scripts.
+TokenPilot 与可选 Argon 路由脚本的可移植单元测试运行器。
+"""
 import os
 from pathlib import Path
 import sys

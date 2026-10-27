@@ -1,6 +1,8 @@
+<!-- Project overview, architecture, build instructions, and usage guide for TokenPilot on macOS and Linux. -->
+<!-- TokenPilot（支持 macOS 与 Linux）的项目概览、架构设计、构建说明与使用指南文档。 -->
 # TokenPilot
 
-TokenPilot is a native macOS floating panel and menu bar utility for viewing local **Codex** and optional **Google Gemini (Argon worker)** coding usage, account rate-limit windows, trailing 15-minute quota forecasts, experimental public community reset signals, and live task-routing preferences.
+TokenPilot is a cross-platform (Linux & macOS) utility for viewing local **Codex** and optional **Google Gemini (Argon worker)** coding usage, account rate-limit windows, trailing 15-minute quota forecasts, experimental public community reset signals, and live task-routing preferences.
 
 TokenPilot can be built and used standalone with Codex alone—installing the optional Gemini routing skill or configuring a Google API key is not required to run the viewer.
 
@@ -34,8 +36,9 @@ TokenPilot can be built and used standalone with Codex alone—installing the op
 ```text
 .
 ├── app/
-│   ├── Build.command                 # Self-contained macOS .app builder (outputs to dist/TokenPilot.app)
-│   ├── main.swift                    # Floating panel, status bar item, collector IPC, and --ui-checks
+│   ├── Build.command                 # Self-contained macOS & Linux app builder (outputs to dist/TokenPilot.app)
+│   ├── linux_app.py                  # Linux runtime, preference engine, --ui-checks, and live HTTP/UI server
+│   ├── main.swift                    # macOS floating panel, status bar item, collector IPC, and --ui-checks
 │   ├── Appearance.swift              # 6 themes, WCAG contrast engine, EN/zh-Hans localization, Customize UI
 │   ├── InstallationPreferences.swift # Guided install preference inference & CLI (--inspect/--configure-install-preferences)
 │   ├── LiquidGlassContent.swift      # macOS 26+ NSGlassEffectView runtime bridge & macOS 15 fallback
@@ -73,9 +76,8 @@ TokenPilot can be built and used standalone with Codex alone—installing the op
 ## Requirements
 
 - **Native Viewer (`app/`)**:
-  - **macOS 15.0+** (macOS 26+ enables native `NSGlassEffectView` for the *Liquid Glass* theme; macOS 15 uses `NSVisualEffectView`).
-  - **Xcode Command Line Tools** (`swiftc`, `codesign`).
-  - **Python 3.10+** (standard library only).
+  - **Linux**: **Python 3.10+** (standard library only). Builds `dist/TokenPilot.app/Contents/MacOS/TokenPilot` via `./app/Build.command`, supports all CLI flags (`--ui-checks`, `--inspect-install-preferences`, `--configure-install-preferences`), and serves the live interactive TokenPilot UI (`http://127.0.0.1:43123` by default) connected to `bridge.py`.
+  - **macOS 15.0+**: (macOS 26+ enables native `NSGlassEffectView` for the *Liquid Glass* theme; macOS 15 uses `NSVisualEffectView`), **Xcode Command Line Tools** (`swiftc`, `codesign`), and **Python 3.10+**.
   - **Codex CLI** (`codex` available on `PATH`, or specified via `TOKENPILOT_CODEX_BIN`).
 - **Optional Gemini Routing (`install.py`, `routing/`)**:
   - **macOS or Linux** with **Python 3.10+**.
@@ -151,7 +153,7 @@ Run the portable unit test suite from a clean checkout (does not read or modify 
 python3 tests/run_tests.py
 ```
 
-On a Mac with Swift and a graphical session, also run the isolated native inference and preference-persistence tests:
+On macOS or Linux, also run the isolated native inference and preference-persistence tests:
 
 ```bash
 python3 tests/run_native_preferences.py

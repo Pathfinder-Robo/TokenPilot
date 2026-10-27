@@ -1,3 +1,6 @@
+"""Unit tests for the local usage collector, quota normalization, launcher controls, and installer.
+本地用量收集器、配额标准化、启动器控制与安装器的单元测试。
+"""
 import importlib.util
 import json
 from pathlib import Path

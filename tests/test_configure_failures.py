@@ -1,3 +1,6 @@
+"""Failure-handling and timeout tests for the installation preference configurator.
+安装偏好配置器的故障处理、超时与异常状态测试。
+"""
 import io
 import json
 from pathlib import Path

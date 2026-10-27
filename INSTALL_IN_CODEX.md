@@ -1,3 +1,5 @@
+<!-- Guided installation instructions and preference precedence rules for TokenPilot in Codex. -->
+<!-- TokenPilot 在 Codex 中的引导式安装说明与外观偏好优先级规则文档。 -->
 # Guided Installation in Codex (`INSTALL_IN_CODEX.md`)
 
 Use this guide when asking **Codex** to build, configure, and optionally launch **TokenPilot** on macOS.

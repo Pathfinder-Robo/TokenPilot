@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Launch the installed Google worker with persistent user credentials."""
+"""Launch the installed Google worker with persistent user credentials.
+使用持久化用户凭据与授权检查启动已安装的 Google 编码工作进程。
+"""
 import json
 import os
 from pathlib import Path

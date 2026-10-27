@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Google-backed coding worker with workspace-scoped tools and JSON results.
+基于 Google Interactions API 的沙盒化编码工作进程，提供工作区范围工具与 JSON 结果输出。
 
 Requires Python 3.10+. Execution uses macOS sandbox-exec or Linux bubblewrap;
 otherwise the worker offers file tools with supervisor-run checks.

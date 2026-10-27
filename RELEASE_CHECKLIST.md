@@ -1,3 +1,5 @@
+<!-- Pre-release legal, provenance, and technical verification checklist for TokenPilot. -->
+<!-- TokenPilot 发布前的法律合规、代码来源与技术验证清单文档。 -->
 # Release Checklist
 
 ## 1. Blocking Legal & Provenance Items (UNRESOLVED)

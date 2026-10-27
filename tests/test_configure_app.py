@@ -1,3 +1,6 @@
+"""Unit tests for the guided installation preference inspector and configurator CLI.
+引导式安装偏好检查器与配置器 CLI 的单元测试。
+"""
 import io
 import json
 import os

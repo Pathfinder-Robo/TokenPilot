@@ -1,3 +1,5 @@
+// Native macOS NSGlassEffectView runtime bridge and fallback view hierarchy for TokenPilot.
+// TokenPilot 的原生 macOS NSGlassEffectView 运行时桥接与回退材质视图组件。
 import AppKit
 import SwiftUI
 

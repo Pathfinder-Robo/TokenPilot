@@ -1,3 +1,5 @@
+// Isolated native preference inference and UserDefaults persistence test suite for TokenPilot.
+// TokenPilot 的隔离式原生外观偏好推断与 UserDefaults 持久化测试套件。
 import AppKit
 import Foundation
 let application=NSApplication.shared

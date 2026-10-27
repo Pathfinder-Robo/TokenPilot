@@ -1,3 +1,6 @@
+"""Unit tests for Argon worker HTTP IncompleteRead handling and bounded polling retries.
+Argon 工作进程 HTTP IncompleteRead 容错处理与有界轮询重试的单元测试。
+"""
 import http.client
 import io
 import json

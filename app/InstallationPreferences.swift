@@ -1,3 +1,5 @@
+// Guided installation preference inference and CLI handler for TokenPilot.
+// TokenPilot 的引导式安装外观偏好推断逻辑与命令行处理模块。
 import AppKit
 import Foundation
 

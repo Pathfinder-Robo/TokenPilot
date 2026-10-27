@@ -1,3 +1,5 @@
+// Gaussian text-contrast wash generator and mask cache for TokenPilot's Liquid Glass theme.
+// TokenPilot 液态玻璃主题的高斯文本对比度柔光遮罩生成器与缓存模块。
 import AppKit
 import CoreGraphics
 import QuartzCore

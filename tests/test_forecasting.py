@@ -1,3 +1,6 @@
+"""Unit tests for 15-minute trailing quota depletion forecasting and window selection.
+过去 15 分钟配额耗尽预测与展示窗口选择逻辑的单元测试。
+"""
 import json
 from pathlib import Path
 import sys

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Local-only usage collector and routing preference bridge for TokenPilot.
+TokenPilot 的本地用量收集器与路由偏好通信桥接服务。
 
 Reads numerical usage records, never reads auth.json or Gemini credentials.
 Only Codex's own CLI handles authentication for the read-only limits endpoint.

@@ -1,3 +1,5 @@
+<!-- Source preparation and verification report for the TokenPilot repository. -->
+<!-- TokenPilot 代码仓库的源码准备与验证报告文档。 -->
 # Source Preparation and Verification Report
 
 This source-only private repository contains the TokenPilot app, optional Gemini routing setup, and a guided Codex installation workflow.

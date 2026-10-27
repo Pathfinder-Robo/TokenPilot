@@ -1,3 +1,5 @@
+<!-- Third-party runtime dependencies and provenance notices for TokenPilot. -->
+<!-- TokenPilot 的第三方运行时依赖与代码来源声明文档。 -->
 # Third-Party Notices & Provenance Status
 
 ## IMPORTANT: Unconfirmed Provenance & Redistribution Rights

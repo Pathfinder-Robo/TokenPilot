@@ -1,4 +1,6 @@
 ---
+# Optional Argon task-routing skill instructions for delegating coding tasks to the Google worker.
+# 用于将编码任务委派给 Google 工作进程的可选 Argon 任务路由技能说明。
 name: argon-routing
 description: Delegate suitable substantive implementation, debugging, refactoring, tests, and code analysis to the configured Google Argon CLI worker at high effort, guided by the live routing preference. Codex owns independent acceptance and integration. Skip trivial edits and non-coding tasks.
 ---

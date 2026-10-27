@@ -1,3 +1,5 @@
+// SwiftUI card presentation and validation for public NextReset forecast summaries.
+// NextReset 公共社区重置预测摘要的 SwiftUI 卡片展示与数据校验组件。
 import AppKit
 import Foundation
 import SwiftUI

@@ -1,4 +1,6 @@
-"""Trailing-15-minute quota trend; token counts are context, not quota units."""
+"""Trailing-15-minute quota trend; token counts are context, not quota units.
+过去 15 分钟配额消耗趋势预测模块；Token 计数仅作上下文参考而非配额单位。
+"""
 from datetime import datetime, timezone
 import json
 import math
