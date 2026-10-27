@@ -87,7 +87,8 @@ else
   cat > "$APP_DIR/Contents/MacOS/TokenPilot" <<EOF
 #!/usr/bin/env bash
 set -eu
-SCRIPT_DIR="\$(cd "\$(dirname "\$0")" && pwd)"
+SELF_PATH="\$(readlink -f "\$0" 2>/dev/null || realpath "\$0" 2>/dev/null || echo "\$0")"
+SCRIPT_DIR="\$(cd "\$(dirname "\$SELF_PATH")" && pwd)"
 RES_DIR="\$(cd "\$SCRIPT_DIR/../Resources" && pwd)"
 PYTHON_EXEC="\${TOKENPILOT_PYTHON_BIN:-$PYTHON_BIN}"
 exec "\$PYTHON_EXEC" "\$RES_DIR/linux_app.py" "\$@"
