@@ -20,7 +20,13 @@ import sys
 import tempfile
 import threading
 import time
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from datetime import timezone as _tz
+
+    def ZoneInfo(_name: str):  # type: ignore[misc]
+        return _tz.utc
 from forecasting import QuotaHistory, log_sample, current_sample, build_forecast, epoch
 from nextreset import fetch_summary, summary_is_stale, URL as NEXTRESET_URL
 

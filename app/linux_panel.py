@@ -15,7 +15,13 @@ import sys
 import threading
 import time
 from typing import Any
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from datetime import timezone as _tz
+
+    def ZoneInfo(_name: str):  # type: ignore[misc]
+        return _tz.utc
 
 APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
@@ -286,15 +292,46 @@ def launch_gtk_floating_panel(
         gi.require_version("Gdk", "3.0")
         from gi.repository import Gdk, GLib, Gtk, Pango
     except Exception:
+        # Fallback if running under a conda/venv python without system GI bindings:
+        for sys_py in ("/usr/bin/python3", "/bin/python3"):
+            if Path(sys_py).is_file() and Path(sys_py).resolve() != Path(sys.executable).resolve():
+                try:
+                    probe = subprocess.run(
+                        [sys_py, "-c", "import gi; gi.require_version('Gtk', '3.0'); from gi.repository import Gtk"],
+                        capture_output=True,
+                        timeout=3,
+                        check=False,
+                    )
+                    if probe.returncode == 0:
+                        cmd = [sys_py, str(Path(__file__).resolve())]
+                        if web_url:
+                            cmd.extend(["--web-url", web_url])
+                        if start_collapsed:
+                            cmd.append("--collapsed")
+                        if getattr(collector, "offline", False):
+                            cmd.append("--offline")
+                        proc = subprocess.Popen(
+                            cmd,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        with bridge.CHILD_LOCK:
+                            bridge.CHILDREN.add(proc)
+                        return True
+                except Exception:
+                    pass
         return False
 
-    try:
-        import gi
+    AppIndicator = None
+    for _ind_ns in ("AyatanaAppIndicator3", "AppIndicator3"):
+        try:
+            import gi
 
-        gi.require_version("AyatanaAppIndicator3", "0.1")
-        from gi.repository import AyatanaAppIndicator3 as AppIndicator
-    except Exception:
-        AppIndicator = None
+            gi.require_version(_ind_ns, "0.1")
+            AppIndicator = getattr(__import__("gi.repository", fromlist=[_ind_ns]), _ind_ns)
+            break
+        except Exception:
+            continue
 
     class TokenPilotGTKApp:
         def __init__(self) -> None:
@@ -1121,8 +1158,18 @@ def launch_gtk_floating_panel(
 if __name__ == "__main__":
     codex_home = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")).expanduser()
     codex_bin = os.environ.get("TOKENPILOT_CODEX_BIN") or shutil.which("codex")
+    web_url_arg: str | None = None
+    for idx, arg in enumerate(sys.argv[1:], start=1):
+        if arg == "--web-url" and idx < len(sys.argv):
+            web_url_arg = sys.argv[idx + 1]
     collector = bridge.Bridge(codex_home, codex_bin, ZoneInfo("UTC"), offline="--offline" in sys.argv)
     appearance = linux_app.AppearanceStore(prefs_path=linux_app.default_preferences_path(), persists_changes=True)
-    if launch_gtk_floating_panel(collector, appearance, codex_home, start_collapsed="--collapsed" in sys.argv):
+    if launch_gtk_floating_panel(
+        collector,
+        appearance,
+        codex_home,
+        web_url=web_url_arg,
+        start_collapsed="--collapsed" in sys.argv,
+    ):
         while True:
             time.sleep(1)

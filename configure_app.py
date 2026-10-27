@@ -643,7 +643,8 @@ def _main(
         safe_output["custom_colors"] = custom_colors
 
     if args.launch:
-        if run_process is None and sys.platform.startswith("linux"):
+        is_default_runner = run_process is None or getattr(run_process, "_is_default_runner", False)
+        if is_default_runner and sys.platform.startswith("linux"):
             launch_cmd = [str(executable_path), "--daemon"]
         else:
             launch_cmd = ["open", "-a", str(bundle_path)]
@@ -689,6 +690,8 @@ def main(argv=None, *, run_process=None, input_fn=None, is_tty=None, stdout=None
                  else "launch" if (command[:2] == ["open", "-a"] or "--daemon" in command) else "inspection")
         kwargs.setdefault("timeout", 20)
         return delegate(command, **kwargs)
+
+    bounded_run._is_default_runner = run_process is None  # type: ignore[attr-defined]
 
     try:
         return _main(argv, run_process=bounded_run, input_fn=input_fn, is_tty=is_tty,

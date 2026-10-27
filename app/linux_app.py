@@ -20,7 +20,13 @@ import threading
 import time
 from typing import Any, Callable
 import urllib.parse
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from datetime import timezone as _tz
+
+    def ZoneInfo(_name: str):  # type: ignore[misc]
+        return _tz.utc
 
 APP_DIR = Path(__file__).resolve().parent
 if str(APP_DIR) not in sys.path:
