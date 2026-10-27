@@ -1157,12 +1157,20 @@ def launch_gtk_floating_panel(
 
 if __name__ == "__main__":
     codex_home = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")).expanduser()
-    codex_bin = os.environ.get("TOKENPILOT_CODEX_BIN") or shutil.which("codex")
+    codex_bin = bridge.discover_codex_binary(os.environ.get("TOKENPILOT_CODEX_BIN"), codex_home)
     web_url_arg: str | None = None
     for idx, arg in enumerate(sys.argv[1:], start=1):
         if arg == "--web-url" and idx < len(sys.argv):
             web_url_arg = sys.argv[idx + 1]
-    collector = bridge.Bridge(codex_home, codex_bin, ZoneInfo("UTC"), offline="--offline" in sys.argv)
+    is_offline = "--offline" in sys.argv
+    tz = linux_app._detect_local_timezone()
+    collector = bridge.Bridge(codex_home, codex_bin, tz, offline=is_offline)
+    if not is_offline:
+        collector.refresh_limits(force=True)
+        collector.refresh_nextreset(force=True)
+        deadline = time.monotonic() + 4.5
+        while (collector.fetching or collector.nextreset_fetching) and time.monotonic() < deadline:
+            time.sleep(0.05)
     appearance = linux_app.AppearanceStore(prefs_path=linux_app.default_preferences_path(), persists_changes=True)
     if launch_gtk_floating_panel(
         collector,

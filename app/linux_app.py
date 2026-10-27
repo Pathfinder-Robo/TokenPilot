@@ -1283,6 +1283,19 @@ LIVE_UI_SCRIPT = r"""
     return String(Math.round(n));
   }
 
+  function fmtEpochReset(epochSec, isWeekly, includeVerb, isZh) {
+    if (!epochSec || epochSec <= 0) return '—';
+    const d = new Date(Number(epochSec) * 1000);
+    const now = new Date();
+    const hm = d.toTimeString().slice(0, 5);
+    const daysEn = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const daysZh = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const sameDay = !isWeekly && d.toDateString() === now.toDateString();
+    const timePart = sameDay ? hm : `${(isZh ? daysZh : daysEn)[d.getDay()]} ${hm}`;
+    if (!includeVerb) return timePart;
+    return isZh ? `${timePart} 重置` : `resets ${timePart}`;
+  }
+
   function applyLiveSnapshot(snap) {
     if (!snap || typeof snap !== 'object') return;
     latestSnapshot = snap;
@@ -1303,18 +1316,36 @@ LIVE_UI_SCRIPT = r"""
 
     const codexAvail = snap.codex && snap.codex.available;
     const geminiAvail = snap.gemini && snap.gemini.available;
-    const codexTotal = codexAvail ? compactNum(snap.codex.total_tokens) : '0';
-    const geminiTotal = geminiAvail ? compactNum(snap.gemini.total_tokens) : '0';
+    const codexTotalNum = codexAvail ? Number(snap.codex.total_tokens || 0) : 0;
+    const geminiTotalNum = geminiAvail ? Number(snap.gemini.total_tokens || 0) : 0;
+    const codexTotal = codexAvail ? compactNum(codexTotalNum) : '—';
+    const geminiTotal = geminiAvail ? compactNum(geminiTotalNum) : '—';
+    const codexCache = codexAvail
+      ? (isZh ? `缓存 ${compactNum(snap.codex.cached_tokens)}` : `cached ${compactNum(snap.codex.cached_tokens)}`)
+      : (isZh ? '暂无会话' : 'no logs');
+    const geminiCache = geminiAvail
+      ? (isZh ? `缓存 ${compactNum(snap.gemini.cached_tokens)}` : `cached ${compactNum(snap.gemini.cached_tokens)}`)
+      : (isZh ? '缓存 —' : 'cached —');
+    const sumTokens = codexTotalNum + geminiTotalNum;
+    const codexSharePct = sumTokens > 0 ? ((codexTotalNum / sumTokens) * 100).toFixed(2) : '50.00';
+    const geminiSharePct = sumTokens > 0 ? (100 - Number(codexSharePct)).toFixed(2) : '50.00';
     const pct = (snap.routing && typeof snap.routing.gemini_percent === 'number') ? snap.routing.gemini_percent : 75;
 
+    const lim = snap.limits || {};
+    const five = lim.five_hour;
+    const weekly = lim.weekly;
+    const fiveRem = (five && typeof five.used_percent === 'number') ? Math.max(0, Math.min(100, Math.round(100 - five.used_percent))) : null;
+    const wkRem = (weekly && typeof weekly.used_percent === 'number') ? Math.max(0, Math.min(100, Math.round(100 - weekly.used_percent))) : null;
+
     if (statusEl) {
-      const limErr = snap.limits && snap.limits.error;
+      const limErr = lim.error;
       statusEl.textContent = limErr
         ? (isZh ? `本地收集器已连接 · ${limErr}` : `Local collector active · ${limErr}`)
-        : (isZh ? '本地收集器已连接 · 实时同步中' : 'Local collector active · live sync');
+        : (isZh ? 'Codex 与 NextReset 实时同步中' : 'Codex & NextReset live sync active');
     }
     if (summaryEl) {
-      summaryEl.textContent = `Codex: ${codexTotal} | Gemini: ${geminiTotal} | Routing: ${pct}%`;
+      const qStr = (fiveRem !== null && wkRem !== null) ? `5h: ${fiveRem}% left | Wk: ${wkRem}% left` : 'Quota syncing…';
+      summaryEl.textContent = `Codex: ${codexTotal} | Gemini: ${geminiTotal} | ${qStr} | Routing: ${pct}%`;
     }
 
     if (typeof state !== 'undefined' && state.routingPercent !== pct) {
@@ -1323,6 +1354,141 @@ LIVE_UI_SCRIPT = r"""
         if (typeof syncRouting === 'function') syncRouting(col, pct);
       });
     }
+
+    // Update all expanded & collapsed widget cards with live snapshot data
+    const fiveLeftText = fiveRem !== null ? (isZh ? `剩余 ${fiveRem}%` : `${fiveRem}% left`) : (isZh ? '不可用' : 'Unavailable');
+    const wkLeftText = wkRem !== null ? (isZh ? `剩余 ${wkRem}%` : `${wkRem}% left`) : (isZh ? '不可用' : 'Unavailable');
+    const fiveResetVerb = five ? fmtEpochReset(five.resets_at, false, true, isZh) : '';
+    const fiveResetShort = five ? fmtEpochReset(five.resets_at, false, false, isZh) : '';
+    const wkResetVerb = weekly ? fmtEpochReset(weekly.resets_at, true, true, isZh) : '';
+    const wkResetShort = weekly ? fmtEpochReset(weekly.resets_at, true, false, isZh) : '';
+    const fiveW = fiveRem !== null ? `${fiveRem}%` : '0%';
+    const wkW = wkRem !== null ? `${wkRem}%` : '0%';
+    const fiveTitle = isZh ? '5 小时' : '5-hour';
+    const wkTitle = isZh ? '周配额' : 'Weekly';
+
+    const gemStatusMsg = (snap.gemini && snap.gemini.status_message) || (isZh ? '今日暂无已追踪的 Gemini 运行' : 'No tracked Gemini runs today');
+    const fc = snap.forecast || {};
+    const fcHeadline = fc.headline || (isZh ? '等待配额数据' : 'Waiting for quota data');
+    const fcDetail = fc.detail || '';
+    const tpm = Number(fc.tokens_per_minute || 0);
+    const burnText = tpm > 0 ? `${compactNum(tpm)} ${isZh ? 'tok/分钟' : 'tok/min'}` : (isZh ? '0 tok/分钟' : '0 tok/min');
+
+    const nr = snap.nextreset || {};
+    const fmtProb = v => (typeof v === 'number' && isFinite(v)) ? `${Math.round(v * 100)}%` : '—';
+    const nr24 = fmtProb(nr.probability_24h);
+    const nr48 = fmtProb(nr.probability_48h);
+    const nr72 = fmtProb(nr.probability_72h);
+    const nrBadge = nr.stale ? (isZh ? '过期快照' : 'Stale') : (nr.announcement_state === 'announced' ? (isZh ? '已宣布' : 'Announced') : (isZh ? '实时' : 'Live'));
+    const nrMain = nr.announcement_state === 'announced'
+      ? (isZh ? '已宣布重置 · 等待推送' : 'Reset announced · awaiting rollout')
+      : (nr.headline || (isZh ? '社区重置预测' : 'Community reset forecast'));
+    const nrSub = nr.latest_report_at
+      ? (isZh ? `最近记录 ${nr.latest_report_at.slice(5, 16).replace('T', ' ')} UTC` : `Latest report ${nr.latest_report_at.slice(5, 16).replace('T', ' ')} UTC`)
+      : '';
+
+    const stampDate = snap.timestamp ? new Date(snap.timestamp) : new Date();
+    const hmNow = stampDate.toTimeString().slice(0, 5);
+    const updatedLabel = isZh ? `更新于 ${hmNow}` : `Updated ${hmNow}`;
+
+    document.querySelectorAll('.widget[data-mode="expanded"]').forEach(w => {
+      const themeId = w.getAttribute('data-theme');
+      const pill = w.querySelector('.token-group .status-pill');
+      if (pill) pill.innerHTML = `<span class="green-dot"></span>${gemStatusMsg}`;
+
+      const tokGroup = w.querySelector('.token-group');
+      if (tokGroup) {
+        const headHtml = tokGroup.querySelector('.sec-head') ? tokGroup.querySelector('.sec-head').outerHTML : '';
+        if (themeId === 'graphite') {
+          tokGroup.innerHTML = `${headHtml}
+            <div class="b-ledger-row"><div><span class="b-prov">Codex</span><span class="b-cache">${codexCache}</span></div><div class="b-val">${codexTotal}</div></div>
+            <div class="b-ledger-row"><div><span class="b-prov">Gemini</span><span class="b-cache">${geminiCache}</span></div><div class="b-val">${geminiTotal}</div></div>
+            <div class="split-bar" title="Codex ${codexTotal} vs Gemini ${geminiTotal}"><div style="width:${codexSharePct}%"></div><div style="width:${geminiSharePct}%"></div></div>`;
+        } else if (themeId === 'instrument') {
+          tokGroup.innerHTML = `${headHtml}
+            <div class="d-grid2">
+              <div class="d-cell"><div class="d-sub">Codex</div><div class="d-num">${codexTotal}</div><div class="d-sub">${codexCache}</div></div>
+              <div class="d-cell"><div class="d-sub">Gemini</div><div class="d-num">${geminiTotal}</div><div class="d-sub">${geminiCache}</div></div>
+            </div>
+            <div class="split-bar" title="Codex ${codexTotal} vs Gemini ${geminiTotal}"><div style="width:${codexSharePct}%"></div><div style="width:${geminiSharePct}%"></div></div>`;
+        } else {
+          tokGroup.innerHTML = `${headHtml}
+            <div class="a-tokens">
+              <div><div class="a-provider">Codex</div><div class="a-count">${codexTotal}</div><div class="a-cache">${codexCache}</div></div>
+              <div><div class="a-provider gem">Gemini</div><div class="a-count">${geminiTotal}</div><div class="a-cache">${geminiCache}</div></div>
+            </div>
+            <div class="split-bar" title="Codex ${codexTotal} vs Gemini ${geminiTotal}"><div style="width:${codexSharePct}%"></div><div style="width:${geminiSharePct}%"></div></div>`;
+        }
+      }
+
+      const qGroup = w.querySelector('.quota-group');
+      if (qGroup) {
+        if (themeId === 'graphite') {
+          qGroup.innerHTML = `
+            <div class="b-qrow"><span>${fiveTitle}</span><div class="b-track"><div class="b-fill" style="width:${fiveW}"></div></div><span class="b-qmeta">${fiveLeftText}${fiveResetShort ? ' · ' + fiveResetShort : ''}</span></div>
+            <div class="b-qrow"><span>${wkTitle}</span><div class="b-track"><div class="b-fill" style="width:${wkW}"></div></div><span class="b-qmeta">${wkLeftText}${wkResetShort ? ' · ' + wkResetShort : ''}</span></div>`;
+        } else if (themeId === 'instrument') {
+          qGroup.innerHTML = `
+            <div class="d-grid2">
+              <div class="d-cell"><div class="d-qhead"><span>${fiveTitle}</span><strong>${fiveLeftText}</strong></div><div class="d-track"><div class="d-fill" style="width:${fiveW}"></div></div><div class="d-sub">${fiveResetVerb}</div></div>
+              <div class="d-cell"><div class="d-qhead"><span>${wkTitle}</span><strong>${wkLeftText}</strong></div><div class="d-track"><div class="d-fill" style="width:${wkW}"></div></div><div class="d-sub">${wkResetShort}</div></div>
+            </div>`;
+        } else {
+          qGroup.innerHTML = `
+            <div class="a-qrow"><div class="a-qhead"><strong>${fiveTitle} · ${fiveLeftText}</strong><span class="a-qmeta">${fiveResetVerb}</span></div><div class="a-track"><div class="a-fill" style="width:${fiveW}"></div></div></div>
+            <div class="a-qrow"><div class="a-qhead"><strong>${wkTitle} · ${wkLeftText}</strong><span class="a-qmeta">${wkResetVerb}</span></div><div class="a-track"><div class="a-fill" style="width:${wkW}"></div></div></div>`;
+        }
+      }
+
+      const paceLeft = w.querySelector('.pace-left');
+      if (paceLeft) paceLeft.innerHTML = `<span class="green-dot"></span><span>${fcHeadline}</span>`;
+      const burnEl = w.querySelector('.burn-rate');
+      if (burnEl) burnEl.textContent = burnText;
+      const paceSub = w.querySelector('.pace-sub');
+      if (paceSub) paceSub.textContent = fcDetail;
+
+      const nrBadgeEl = w.querySelector('.nr-demo-badge');
+      if (nrBadgeEl) nrBadgeEl.textContent = nrBadge;
+      const nrProbEl = w.querySelector('.nr-prob-val');
+      if (nrProbEl) nrProbEl.textContent = nr24;
+      const nrMainEl = w.querySelector('.nr-status-main');
+      if (nrMainEl) nrMainEl.innerHTML = `<span class="green-dot"></span><span>${nrMain}</span>`;
+      const nrCountEl = w.querySelector('.nr-countdown');
+      if (nrCountEl) nrCountEl.textContent = nrSub;
+      const nrHorizonsEl = w.querySelector('.nr-horizons');
+      if (nrHorizonsEl) nrHorizonsEl.innerHTML = `<span>48h <strong>${nr48}</strong></span><span aria-hidden="true">·</span><span>72h <strong>${nr72}</strong></span>`;
+
+      const tsEl = w.querySelector('[data-role="timestamp"]');
+      if (tsEl) tsEl.textContent = updatedLabel;
+    });
+
+    // Collapsed cards
+    const showWeeklyCollapsed = (fiveRem !== null && fiveRem > 95) || (fc.display_window === 'weekly');
+    const colTitle = showWeeklyCollapsed ? wkTitle : fiveTitle;
+    const colPct = showWeeklyCollapsed ? (wkRem !== null ? `${wkRem}%` : '—') : (fiveRem !== null ? `${fiveRem}%` : '—');
+    const colW = showWeeklyCollapsed ? wkW : fiveW;
+
+    document.querySelectorAll('.widget[data-mode="collapsed"]').forEach(w => {
+      const rows = w.querySelectorAll('.c-row');
+      if (rows[0]) {
+        rows[0].innerHTML = `
+          <span class="mono"><strong>Codex</strong> ${codexTotal}</span>
+          <div class="c-bar" title="Observed split: Codex ${codexTotal} / Gemini ${geminiTotal}">
+            <div style="width:${codexSharePct}%"></div>
+            <div style="width:${geminiSharePct}%"></div>
+          </div>
+          <span class="mono">${geminiTotal} <strong>Gemini</strong></span>`;
+      }
+      if (rows[1]) {
+        rows[1].innerHTML = `
+          <span>${colTitle}</span>
+          <span class="green-dot" title="${fcHeadline}"></span>
+          <div class="c-bar" title="${colPct}">
+            <div style="width:${colW}"></div>
+          </div>
+          <span class="mono"><strong>${colPct}</strong></span>`;
+      }
+    });
   }
 
   async function fetchLiveState() {
@@ -1453,6 +1619,29 @@ def load_runtime_config() -> dict[str, Any]:
     }
 
 
+def _detect_local_timezone() -> Any:
+    tz_name = os.environ.get("TZ")
+    if not tz_name:
+        try:
+            etc_tz = Path("/etc/timezone")
+            if etc_tz.is_file():
+                tz_name = etc_tz.read_text(encoding="utf-8").strip()
+        except OSError:
+            pass
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            pass
+    try:
+        local_tz = datetime.now().astimezone().tzinfo
+        if local_tz is not None:
+            return local_tz
+    except Exception:
+        pass
+    return timezone.utc
+
+
 def serve_ui(
     port: int = DEFAULT_PORT,
     host: str = "127.0.0.1",
@@ -1463,14 +1652,19 @@ def serve_ui(
 ) -> int:
     runtime = load_runtime_config()
     codex_home = Path(os.environ.get("CODEX_HOME") or runtime.get("codex_home") or str(Path.home() / ".codex")).expanduser()
-    codex_bin = os.environ.get("TOKENPILOT_CODEX_BIN") or runtime.get("codex_binary") or shutil.which("codex")
-    tz_name = os.environ.get("TZ") or "UTC"
-    try:
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = timezone.utc
+    codex_bin = bridge.discover_codex_binary(
+        os.environ.get("TOKENPILOT_CODEX_BIN") or runtime.get("codex_binary"),
+        codex_home,
+    )
+    tz = _detect_local_timezone()
 
     collector = bridge.Bridge(codex_home, codex_bin, tz, offline=offline)
+    if not offline:
+        collector.refresh_limits(force=True)
+        collector.refresh_nextreset(force=True)
+        deadline = time.monotonic() + 4.5
+        while (collector.fetching or collector.nextreset_fetching) and time.monotonic() < deadline:
+            time.sleep(0.05)
     prefs_path = default_preferences_path()
     appearance = AppearanceStore(prefs_path=prefs_path, persists_changes=True)
     html_content = load_dashboard_html()

@@ -366,6 +366,36 @@ def normalize_limits(result):
     return answer
 
 
+def discover_codex_binary(explicit=None, home=None):
+    if explicit and Path(explicit).is_file() and os.access(explicit, os.X_OK):
+        return str(Path(explicit))
+    for env_key in ('TOKENPILOT_CODEX_BIN', 'CODEX_BIN'):
+        env_val = os.environ.get(env_key)
+        if env_val and Path(env_val).is_file() and os.access(env_val, os.X_OK):
+            return str(Path(env_val))
+    which_bin = shutil.which('codex')
+    if which_bin:
+        return which_bin
+    candidates = []
+    if home:
+        candidates.append(Path(home) / 'plugins' / '.plugin-appserver' / 'codex')
+    user_home = Path.home()
+    candidates.extend([
+        user_home / '.codex' / 'plugins' / '.plugin-appserver' / 'codex',
+        user_home / '.local' / 'opt' / 'chatgpt' / 'usr' / 'lib' / 'chatgpt' / 'resources' / 'codex',
+        Path('/opt/chatgpt/usr/lib/chatgpt/resources/codex'),
+        Path('/usr/lib/chatgpt/resources/codex'),
+        user_home / '.local' / 'bin' / 'codex',
+    ])
+    for candidate in candidates:
+        try:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+        except OSError:
+            continue
+    return explicit
+
+
 def fetch_limits(binary, home, timeout=25):
     if not binary or not Path(binary).is_file():
         raise RuntimeError('Codex CLI not found')
@@ -425,7 +455,7 @@ def fetch_limits(binary, home, timeout=25):
 
 class Bridge:
     def __init__(self, home, binary, tz, offline=False):
-        self.home, self.binary, self.tz = Path(home), binary, tz
+        self.home, self.binary, self.tz = Path(home), discover_codex_binary(binary, home), tz
         self.offline = offline
         self.codex = CodexUsage(home)
         self.gemini = GeminiUsage(home)
@@ -557,8 +587,9 @@ class Bridge:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--codex-home', default=os.environ.get('CODEX_HOME') or str(Path.home() / '.codex'))
-    parser.add_argument('--codex-binary', default=shutil.which('codex'))
+    default_home = os.environ.get('CODEX_HOME') or str(Path.home() / '.codex')
+    parser.add_argument('--codex-home', default=default_home)
+    parser.add_argument('--codex-binary', default=discover_codex_binary(None, default_home))
     parser.add_argument('--timezone', default='Asia/Shanghai')
     parser.add_argument('--serve', action='store_true')
     parser.add_argument('--snapshot', action='store_true')

@@ -10,6 +10,19 @@ BUILD_DIR="${TOKENPILOT_BUILD_DIR:-$ROOT_DIR/.build}"
 MODULE_CACHE_DIR="$BUILD_DIR/module-cache"
 PYTHON_BIN="${TOKENPILOT_PYTHON_BIN:-${PYTHON_BIN:-$(command -v python3 || true)}}"
 CODEX_BIN="${TOKENPILOT_CODEX_BIN:-${CODEX_BIN:-$(command -v codex || true)}}"
+if [ -z "$CODEX_BIN" ]; then
+  for CANDIDATE in \
+    "${CODEX_HOME:-$HOME/.codex}/plugins/.plugin-appserver/codex" \
+    "$HOME/.local/opt/chatgpt/usr/lib/chatgpt/resources/codex" \
+    "/opt/chatgpt/usr/lib/chatgpt/resources/codex" \
+    "/usr/lib/chatgpt/resources/codex" \
+    "$HOME/.local/bin/codex"; do
+    if [ -x "$CANDIDATE" ]; then
+      CODEX_BIN="$CANDIDATE"
+      break
+    fi
+  done
+fi
 OS_NAME="$(uname -s)"
 
 if [ "$OS_NAME" != "Darwin" ] && [ "$OS_NAME" != "Linux" ]; then
