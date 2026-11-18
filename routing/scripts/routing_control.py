@@ -11,7 +11,7 @@ import sys
 import uuid
 
 
-def write_run_state(codex_home, result_dir, *, started_at=None, interaction=None, status=None, usage=None):
+def write_run_state(codex_home, result_dir, *, started_at=None, interaction=None, status=None, usage=None, thread_id=None):
     """Publish only numerical usage and lifecycle metadata for the floating viewer."""
     directory = Path(codex_home) / 'argon/usage-cache'
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -26,6 +26,8 @@ def write_run_state(codex_home, result_dir, *, started_at=None, interaction=None
                  'status': 'running', 'interactions': {}}
     if started_at:
         state['started_at'] = started_at
+    if thread_id:
+        state['thread_id'] = thread_id
     if interaction:
         counts = {key: value for key, value in (interaction.get('usage') or {}).items()
                   if isinstance(value, (int, float)) and not isinstance(value, bool)}
@@ -89,10 +91,18 @@ def register_run(codex_home, arguments):
         raise ValueError('Run registry must not be a symlink')
     record = {'result_dir': str(Path(result).expanduser().resolve()),
               'started_at': datetime.now(timezone.utc).isoformat(), 'pid': os.getpid()}
+    raw_thread_id = os.environ.get('CODEX_THREAD_ID', '')
+    try:
+        thread_id = str(uuid.UUID(raw_thread_id))
+    except ValueError:
+        thread_id = None
+    if thread_id == raw_thread_id.lower():
+        record['thread_id'] = thread_id
     descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     with os.fdopen(descriptor, 'a') as stream:
         stream.write(json.dumps(record) + '\n')
-    write_run_state(codex_home, record['result_dir'], started_at=record['started_at'])
+    write_run_state(codex_home, record['result_dir'], started_at=record['started_at'],
+                    thread_id=record.get('thread_id'))
 
 
 if __name__ == '__main__':

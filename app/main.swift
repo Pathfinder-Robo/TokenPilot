@@ -8,10 +8,17 @@ import UserNotifications
 struct Usage: Decodable {
     var total_tokens: Double = 0
     var cached_tokens: Double = 0
+    var input_tokens: Double? = nil
+    var output_tokens: Double? = nil
+    var uncached_input_tokens: Double? = nil
+    var estimated_usd: Double? = nil
+    var pricing_reference_version: Int? = nil
+    var categories_valid: Bool? = nil
     var available: Bool = false
-    var status: String?
-    var status_message: String?
-    var last_usage_at: String?
+    var partial: Bool? = nil
+    var status: String? = nil
+    var status_message: String? = nil
+    var last_usage_at: String? = nil
 }
 struct Routing: Decodable { var gemini_percent: Int }
 struct WindowLimit: Decodable { var used_percent: Double; var resets_at: Double? }
@@ -44,8 +51,25 @@ struct NextResetInfo: Decodable {
     var expires_at: String?
     var announcement_state: String?
 }
+struct ChatUsageRow: Decodable, Identifiable {
+    var id: String
+    var title: String?
+    var codex: Usage?
+    var gemini: Usage?
+}
+
+struct ChatUsage: Decodable {
+    var start_at: String
+    var end_at: String
+    var partial: Bool
+    var rows: [ChatUsageRow]
+    var trend: ChatUsageTrend?
+}
+
 struct Snapshot: Decodable {
     var timestamp: String
+    var timezone: String? = nil
+    var chat_usage: ChatUsage? = nil
     var codex: Usage
     var gemini: Usage
     var routing: Routing
@@ -55,6 +79,59 @@ struct Snapshot: Decodable {
     var nextreset: NextResetInfo?
 }
 struct Runtime: Decodable { var python: String; var codex_home: String; var codex_binary: String; var bridge_path: String? }
+
+enum ReferencePricing {
+    static let uncachedInputPerMillionUSD: Double = 2.0
+    static let cachedInputPerMillionUSD: Double = 0.10
+    static let outputPerMillionUSD: Double = 10.0
+    static let tokensPerMillion: Double = 1_000_000.0
+
+    static func estimatedUSD(for usage: Usage?) -> Double? {
+        guard let usage, usage.available else { return nil }
+        if usage.categories_valid == false {
+            return nil
+        }
+        if usage.pricing_reference_version != nil && usage.estimated_usd == nil {
+            return nil
+        }
+        guard usage.total_tokens.isFinite, usage.total_tokens >= 0,
+              usage.cached_tokens.isFinite, usage.cached_tokens >= 0,
+              let input = usage.input_tokens, input.isFinite, input >= 0,
+              let output = usage.output_tokens, output.isFinite, output >= 0 else {
+            return nil
+        }
+        guard usage.cached_tokens <= input else { return nil }
+        if usage.total_tokens > 0 && input == 0 && output == 0 {
+            return nil
+        }
+        if let pre = usage.estimated_usd {
+            guard pre.isFinite, pre >= 0 else { return nil }
+        }
+        let uncachedInput = input - usage.cached_tokens
+        let usd = (
+            uncachedInput * uncachedInputPerMillionUSD
+            + usage.cached_tokens * cachedInputPerMillionUSD
+            + output * outputPerMillionUSD
+        ) / tokensPerMillion
+        guard usd.isFinite, usd >= 0 else { return nil }
+        return usd == 0 ? 0.0 : usd
+    }
+
+    static func formatUSD(_ value: Double?) -> String {
+        guard let value, value.isFinite, value >= 0 else { return "—" }
+        if value == 0 { return "$0.00" }
+        if value < 0.0001 { return "<$0.0001" }
+        if value < 0.01 {
+            let rounded4 = (value * 10_000.0).rounded() / 10_000.0
+            if rounded4 >= 0.01 {
+                return String(format: "$%.2f", value)
+            }
+            return String(format: "$%.4f", value)
+        }
+        return String(format: "$%.2f", value)
+    }
+}
+
 
 func compact(_ value: Double) -> String {
     if value >= 1_000_000 { return String(format: "%.1fM", value / 1_000_000) }
@@ -69,6 +146,7 @@ final class FloatModel: ObservableObject {
     @Published var message: String?
     @Published var editing = false
     @Published var pending: Int?
+    @Published var dashboardSize: CGSize?
     @Published var collapsed = UserDefaults.standard.bool(forKey: "TokenPilotCollapsed")
     private var process: Process?
     private var input: FileHandle?
@@ -181,19 +259,22 @@ struct RoutingView: View {
     var hide: () -> Void = {}
     var resize: () -> Void = {}
     var customize: () -> Void = {}
+    var toggleDashboard: () -> Void = {}
 
     init(
         model: FloatModel,
         appearance: AppearanceStore = AppearanceStore(userDefaults: nil, persistsChanges: false),
         hide: @escaping () -> Void = {},
         resize: @escaping () -> Void = {},
-        customize: @escaping () -> Void = {}
+        customize: @escaping () -> Void = {},
+        toggleDashboard: @escaping () -> Void = {}
     ) {
         self.model = model
         self.appearance = appearance
         self.hide = hide
         self.resize = resize
         self.customize = customize
+        self.toggleDashboard = toggleDashboard
     }
 
     private var palette: ResolvedThemePalette { appearance.palette }
@@ -213,6 +294,44 @@ struct RoutingView: View {
     }()
 
     var body: some View {
+        if let size = model.dashboardSize, !model.collapsed {
+            dashboard(size: size)
+        } else {
+            compactPanel
+        }
+    }
+
+    private func dashboard(size: CGSize) -> some View {
+        HStack(spacing: 0) {
+            if size.width >= 960 {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        headerRow
+                        expandedBody
+                    }
+                    .padding(16)
+                }
+                .frame(width: 348)
+                Divider()
+            }
+            ChatUsageDashboard(
+                usage: model.snapshot?.chat_usage,
+                timeZone: model.snapshot?.timezone.flatMap(TimeZone.init(identifier:)) ?? .current,
+                connected: model.connected,
+                appearance: appearance,
+                close: toggleDashboard
+            )
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: size.width, height: size.height)
+        .modifier(LiquidGlassPanelSurfaceModifier(palette: palette, cornerRadius: 18))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .onChange(of: model.collapsed) { _, _ in resize() }
+    }
+
+    @ViewBuilder
+    private var compactPanel: some View {
         let corner: CGFloat = palette.materialKind == .liquidGlassEffect
             ? (model.collapsed ? 24 : 26)
             : appearance.theme.cornerRadius
@@ -287,6 +406,18 @@ struct RoutingView: View {
             .overlay(WindowDragArea(label: loc.L("Drag to move TokenPilot", "拖动以移动 TokenPilot")))
 
             HStack(spacing: 2) {
+                if model.dashboardSize == nil {
+                    Button(action: toggleDashboard) {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(palette.secondaryTextColor)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(loc.L("Show usage by chat", "查看各对话用量"))
+                    .accessibilityLabel(loc.L("Show usage by chat", "查看各对话用量"))
+                }
                 Button(action: customize) {
                     Image(systemName: "paintpalette")
                         .font(.system(size: 13, weight: .medium))
@@ -1492,6 +1623,347 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ view: WindowDragAreaView, context: Context) { view.toolTip = label }
 }
 
+private struct ChatUsageDashboard: View {
+    let usage: ChatUsage?
+    let timeZone: TimeZone
+    let connected: Bool
+    @ObservedObject var appearance: AppearanceStore
+    var close: () -> Void
+
+    private enum Provider: String, CaseIterable {
+        case all, codex, gemini
+
+        func label(_ loc: TokenPilotLocalizer) -> String {
+            switch self {
+            case .all: loc.L("All", "全部")
+            case .codex: "Codex"
+            case .gemini: "Gemini"
+            }
+        }
+
+    }
+
+    private enum Column: CaseIterable {
+        case codex, total, cached, uncached, output
+
+        func label(_ loc: TokenPilotLocalizer) -> String {
+            switch self {
+            case .codex: "Codex"
+            case .total: loc.L("Total cost", "合计")
+            case .cached: loc.L("Cached input", "缓存输入")
+            case .uncached: loc.L("Uncached input", "非缓存输入")
+            case .output: loc.L("Output", "输出")
+            }
+        }
+    }
+
+    private struct Row: Identifiable {
+        let id: String
+        let title: String
+        let codex: Usage?
+        let gemini: Usage?
+
+        var codexCost: Double? {
+            guard let codex else { return 0 }
+            return ReferencePricing.estimatedUSD(for: codex)
+        }
+
+        var geminiCost: Double? {
+            guard let gemini else { return 0 }
+            return ReferencePricing.estimatedUSD(for: gemini)
+        }
+
+        func cost(_ column: Column) -> Double? {
+            if column == .codex { return codexCost }
+            guard let codexCost, let geminiCost, (codexCost + geminiCost).isFinite else { return nil }
+            if column == .total { return codexCost + geminiCost }
+
+            var subtotal = 0.0
+            for value in [codex, gemini].compactMap({ $0 }) {
+                switch column {
+                case .codex, .total: break
+                case .cached:
+                    subtotal += value.cached_tokens * ReferencePricing.cachedInputPerMillionUSD / ReferencePricing.tokensPerMillion
+                case .uncached:
+                    subtotal += ((value.input_tokens ?? 0) - value.cached_tokens)
+                        * ReferencePricing.uncachedInputPerMillionUSD / ReferencePricing.tokensPerMillion
+                case .output:
+                    subtotal += (value.output_tokens ?? 0) * ReferencePricing.outputPerMillionUSD / ReferencePricing.tokensPerMillion
+                }
+            }
+            return subtotal.isFinite ? subtotal : nil
+        }
+
+        func shares(of knownCost: Double) -> (codex: Double, gemini: Double)? {
+            guard let codexCost, let geminiCost, (codexCost + geminiCost).isFinite,
+                  knownCost.isFinite, knownCost >= 0 else { return nil }
+            guard knownCost > 0 else { return (0, 0) }
+            let codexShare = min(codexCost / knownCost, 1)
+            return (codexShare, min(geminiCost / knownCost, 1 - codexShare))
+        }
+    }
+
+    @State private var provider = Provider.all
+    @State private var sortColumn: Column?
+    @State private var descending = true
+    @State private var query = ""
+
+    init(usage: ChatUsage?, timeZone: TimeZone, connected: Bool, appearance: AppearanceStore, close: @escaping () -> Void) {
+        self.usage = usage
+        self.timeZone = timeZone
+        self.connected = connected
+        self.appearance = appearance
+        self.close = close
+    }
+
+    private var loc: TokenPilotLocalizer { TokenPilotLocalizer(language: appearance.language) }
+    private var palette: ResolvedThemePalette { appearance.palette }
+    private var codexColor: Color {
+        palette.isDark ? Color(red: 0.49, green: 0.62, blue: 1) : Color(red: 0.19, green: 0.36, blue: 0.78)
+    }
+    private var geminiColor: Color {
+        palette.isDark ? Color(red: 0.99, green: 0.65, blue: 0.29) : Color(red: 0.67, green: 0.30, blue: 0.02)
+    }
+    private var columns: [Column] {
+        provider == .all ? Column.allCases : Column.allCases.filter { $0 != .codex }
+    }
+    private var activeSortColumn: Column {
+        if let sortColumn, columns.contains(sortColumn) { return sortColumn }
+        return provider == .all ? .codex : .total
+    }
+    private var sortsDescending: Bool { activeSortColumn != sortColumn || descending }
+
+    private var providerRows: [Row] {
+        (usage?.rows ?? []).compactMap { item -> Row? in
+            let codex = provider == .gemini ? nil : item.codex
+            let gemini = provider == .codex ? nil : item.gemini
+            guard codex != nil || gemini != nil else { return nil }
+            let title: String
+            if item.id == "unattributed" {
+                title = loc.L("Unattributed usage", "未归属用量")
+            } else if let name = item.title, !name.isEmpty {
+                title = name
+            } else {
+                title = loc.L("Chat", "对话") + " " + item.id.prefix(8)
+            }
+            return Row(id: item.id, title: title, codex: codex, gemini: gemini)
+        }
+    }
+
+    private var knownCost: Double {
+        providerRows.compactMap { $0.cost(.total) }.reduce(0, +)
+    }
+
+    private var visibleRows: [Row] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rows = providerRows.filter { needle.isEmpty || $0.title.localizedCaseInsensitiveContains(needle) }
+        let criterion = activeSortColumn
+        let descending = sortsDescending
+        return rows.sorted { a, b in
+            let first = a.cost(criterion), second = b.cost(criterion)
+            switch (first, second) {
+            case let (x?, y?) where x != y: return descending ? x > y : x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default:
+                let nameOrder = a.title.localizedStandardCompare(b.title)
+                return nameOrder == .orderedSame ? a.id < b.id : nameOrder == .orderedAscending
+            }
+        }
+    }
+
+    private var period: String? {
+        guard let usage,
+              let start = ChatUsageDateParser.parse(usage.start_at),
+              let end = ChatUsageDateParser.parse(usage.end_at) else { return nil }
+        let format = DateFormatter()
+        format.locale = appearance.language.locale
+        format.dateFormat = "MM-dd HH:mm"
+        return "\(format.string(from: start)) – \(format.string(from: end))"
+    }
+
+    var body: some View {
+        let rows = visibleRows
+        let knownCost = knownCost
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    FrostText(loc.L("Cost by chat", "各对话费用"))
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(palette.readablePrimaryTextColor)
+                        .accessibilityAddTraits(.isHeader)
+                    if let period {
+                        FrostText(period)
+                            .font(.system(size: 13))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.secondaryTextColor)
+                    }
+                    FrostText(loc.L("Gemini equivalent · USD estimate", "Gemini 等价 · USD 估算"))
+                        .font(.system(size: 13))
+                        .foregroundStyle(palette.secondaryTextColor)
+                }
+                Spacer()
+                Button(action: close) {
+                    Label(loc.L("Compact panel", "小面板"), systemImage: "arrow.down.right.and.arrow.up.left")
+                }
+                .controlSize(.large)
+            }
+
+            if let trend = usage?.trend {
+                ChatUsageTrendView(trend: trend, timeZone: timeZone, loc: loc, palette: palette)
+            }
+
+            HStack(spacing: 14) {
+                TextField(loc.L("Search chats", "搜索对话"), text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .frame(maxWidth: 300)
+                Picker(loc.L("Provider", "提供方"), selection: $provider) {
+                    ForEach(Provider.allCases, id: \.self) { source in
+                        Text(source.label(loc)).tag(source)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 14) {
+                legendItem("Codex", color: codexColor)
+                legendItem("Gemini", color: geminiColor)
+                FrostText(loc.L("Share of known cost", "占已知总费用"))
+                    .foregroundStyle(palette.secondaryTextColor)
+            }
+            .font(.system(size: 12))
+
+            if (!connected && usage != nil) || usage?.partial == true {
+                FrostText(!connected
+                    ? loc.L("Disconnected · last received usage", "连接中断 · 上次收到的用量")
+                    : loc.L("Some usage is incomplete or unattributed", "部分用量缺失或未归属"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.warningOrangeColor)
+            }
+
+            GeometryReader { geometry in
+                let columnLimit: CGFloat = provider == .all ? 114 : 132
+                let numberWidth = min(columnLimit, max(64, (geometry.size.width - 170) / CGFloat(columns.count)))
+                VStack(spacing: 0) {
+                    tableHeader(numberWidth: numberWidth)
+                    Divider()
+                    if rows.isEmpty {
+                        Text(usage == nil
+                            ? loc.L("Waiting for chat usage", "等待用量记录")
+                            : loc.L("No matching chat usage", "没有匹配的对话用量"))
+                            .font(.system(size: 14))
+                            .foregroundStyle(palette.secondaryTextColor)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(rows) { row in
+                                    tableRow(row, numberWidth: numberWidth, knownCost: knownCost)
+                                    Divider().opacity(0.46)
+                                }
+                            }
+                        }
+                    }
+                }
+                .background(palette.insetColor, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    private func legendItem(_ title: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            FrostText(title).foregroundStyle(palette.secondaryTextColor)
+        }
+    }
+
+    private func tableHeader(numberWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            FrostText(loc.L("Chat", "对话"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(columns, id: \.self) { column in
+                Button {
+                    descending = activeSortColumn == column ? !sortsDescending : true
+                    sortColumn = column
+                } label: {
+                    HStack(spacing: 4) {
+                        FrostText(column.label(loc))
+                            .lineLimit(1)
+                        if activeSortColumn == column {
+                            Image(systemName: sortsDescending ? "chevron.down" : "chevron.up")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                    }
+                    .frame(width: numberWidth, alignment: .trailing)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
+            }
+        }
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(palette.readablePrimaryTextColor)
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+    }
+
+    private func tableRow(_ row: Row, numberWidth: CGFloat, knownCost: Double) -> some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 7) {
+                FrostText(row.title)
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(2)
+                    .help(row.title)
+                if let shares = row.shares(of: knownCost) {
+                    let percent = (shares.codex + shares.gemini)
+                        .formatted(.percent.locale(appearance.language.locale).precision(.fractionLength(1)))
+                    let breakdown = "Codex \(ReferencePricing.formatUSD(row.codexCost)) · Gemini \(ReferencePricing.formatUSD(row.geminiCost))"
+                    HStack(spacing: 8) {
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                palette.secondaryTextColor.opacity(0.18)
+                                HStack(spacing: 0) {
+                                    codexColor.frame(width: geometry.size.width * shares.codex)
+                                    geminiColor.frame(width: geometry.size.width * shares.gemini)
+                                }
+                            }
+                            .clipShape(Capsule())
+                        }
+                        .frame(height: 5)
+                        Text(percent)
+                            .font(.system(size: 10.5))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.secondaryTextColor)
+                            .frame(minWidth: 40, alignment: .trailing)
+                    }
+                    .help(breakdown)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(loc.L("Share of known cost", "已知费用占比"))
+                    .accessibilityValue("\(percent) · \(breakdown)")
+                }
+            }
+            .padding(.trailing, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(columns, id: \.self) { column in
+                Text(ReferencePricing.formatUSD(row.cost(column)))
+                    .font(.system(size: 14, weight: column == activeSortColumn ? .semibold : .regular))
+                    .monospacedDigit()
+                    .foregroundStyle(column == activeSortColumn ? palette.readablePrimaryTextColor : palette.secondaryTextColor)
+                    .frame(width: numberWidth, alignment: .trailing)
+            }
+        }
+        .foregroundStyle(palette.readablePrimaryTextColor)
+        .padding(.horizontal, 14)
+        .frame(minHeight: 62)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -1515,6 +1987,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     var settingsWindow: CustomizationWindow?
     var status: NSStatusItem!
     private var cancellables = Set<AnyCancellable>()
+    private var manualDashboard = false
+    private var compactFrame: NSRect?
+    private let sidecarPreferenceKey = "TokenPilotSidecarDashboard"
+
+
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -1544,7 +2021,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             appearance: appearance,
             hide: { [weak self] in self?.hidePanel() },
             resize: { [weak self] in self?.resizePanel() },
-            customize: { [weak self] in self?.showCustomization() }
+            customize: { [weak self] in self?.showCustomization() },
+            toggleDashboard: { [weak self] in self?.toggleDashboard() }
         )
         let host = DraggableHostingView(rootView: content)
         host.wantsLayer = true
@@ -1640,6 +2118,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
             menu.addItem(.separator())
 
+            let dashboardItem = NSMenuItem(
+                title: model.dashboardSize == nil
+                    ? appearance.L("Usage by chat", "各对话用量")
+                    : appearance.L("Compact panel", "小面板"),
+                action: #selector(toggleDashboard),
+                keyEquivalent: ""
+            )
+            dashboardItem.target = self
+            menu.addItem(dashboardItem)
+
+            menu.addItem(.separator())
+
             let quit = NSMenuItem(
                 title: appearance.L("Quit TokenPilot", "退出 TokenPilot"),
                 action: #selector(quit),
@@ -1731,21 +2221,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         return true
     }
 
+    private func isSidecar(_ screen: NSScreen) -> Bool {
+        screen.localizedName.localizedCaseInsensitiveContains("Sidecar")
+    }
+
+    @objc private func toggleDashboard() {
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+        let entering = model.dashboardSize == nil
+        if isSidecar(screen) {
+            UserDefaults.standard.set(entering, forKey: sidecarPreferenceKey)
+        } else {
+            manualDashboard = entering
+        }
+        if entering && model.collapsed {
+            model.toggleCollapsed()
+        }
+        panel.orderFrontRegardless()
+        resizePanel()
+    }
+
     func resizePanel() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
             guard let self, let panel = self.panel, let view = panel.contentView else { return }
             panel.hasShadow = self.appearance.resolvedMaterialKind != .liquidGlassEffect
+            let screen = panel.screen ?? NSScreen.main
+            if let screen, !self.model.collapsed {
+                let sidecarEnabled = UserDefaults.standard.object(forKey: self.sidecarPreferenceKey) as? Bool ?? true
+                let wantsDashboard = self.isSidecar(screen) ? sidecarEnabled : self.manualDashboard
+                if wantsDashboard {
+                    let bounds = screen.visibleFrame.insetBy(dx: 8, dy: 8)
+                    if self.model.dashboardSize == nil {
+                        self.compactFrame = panel.frame
+                    }
+                    if self.model.dashboardSize != bounds.size {
+                        self.model.dashboardSize = bounds.size
+                    }
+                    panel.isMovableByWindowBackground = false
+                    if panel.frame != bounds {
+                        panel.setFrame(bounds, display: true)
+                    }
+                    self.recordPanelState("dashboard")
+                    return
+                }
+            }
+            if self.model.dashboardSize != nil {
+                self.model.dashboardSize = nil
+                self.resizePanel()
+                return
+            }
+            panel.isMovableByWindowBackground = true
             view.layoutSubtreeIfNeeded()
             let size = view.fittingSize
             guard size.width > 0, size.height > 0 else { return }
-            let old = panel.frame
+            let old = self.compactFrame ?? panel.frame
+            self.compactFrame = nil
             var newOrigin = NSPoint(x: old.minX, y: old.maxY - size.height)
-            if let screen = panel.screen ?? NSScreen.main {
+            if let screen {
                 let visible = screen.visibleFrame
                 newOrigin.x = min(max(newOrigin.x, visible.minX + 4), visible.maxX - size.width - 4)
                 newOrigin.y = min(max(newOrigin.y, visible.minY + 4), visible.maxY - size.height - 4)
             }
-            panel.setFrame(NSRect(origin: newOrigin, size: size), display: true)
+            let frame = NSRect(origin: newOrigin, size: size)
+            if panel.frame != frame {
+                panel.setFrame(frame, display: true)
+            }
             self.recordPanelState("resize")
         }
     }
@@ -1778,6 +2317,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
 
         model.collapsed = args.contains("--collapsed")
+        if args.contains("--dashboard") && !model.collapsed {
+            model.dashboardSize = CGSize(width: 1282, height: 1016)
+        }
         if let index = args.firstIndex(of: "--snapshot-file"), args.count > index + 1,
            let data = try? Data(contentsOf: URL(fileURLWithPath: args[index + 1])),
            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {

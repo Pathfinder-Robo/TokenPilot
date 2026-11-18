@@ -36,7 +36,7 @@ fi
 
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources" "$MODULE_CACHE_DIR"
 
-for MODULE in bridge.py forecasting.py nextreset.py linux_app.py linux_panel.py; do
+for MODULE in bridge.py chat_attribution.py chat_usage_trend.py device_usage.py forecasting.py nextreset.py pricing.py reset_tracker.py linux_app.py linux_panel.py; do
   if [ -f "$SOURCE_DIR/$MODULE" ]; then
     cp "$SOURCE_DIR/$MODULE" "$APP_DIR/Contents/Resources/$MODULE"
   fi
@@ -76,6 +76,7 @@ if [ "$OS_NAME" = "Darwin" ]; then
     "$SOURCE_DIR/LiquidGlassContent.swift" \
     "$SOURCE_DIR/GaussianTextFrost.swift" \
     "$SOURCE_DIR/NextResetCardView.swift" \
+    "$SOURCE_DIR/ChatUsageTrendView.swift" \
     -O -o "$APP_DIR/Contents/MacOS/TokenPilot" \
     -framework SwiftUI -framework AppKit -framework UserNotifications \
     -module-cache-path "$MODULE_CACHE_DIR"

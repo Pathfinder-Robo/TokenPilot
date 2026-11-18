@@ -204,7 +204,7 @@ def main():
         entry.write_text(source.split(marker)[0] + (root / 'tests/native_preferences.swift').read_text())
         binary = stage / 'checks'
         sources = [app / name for name in ('Appearance.swift', 'LiquidGlassContent.swift',
-                    'GaussianTextFrost.swift', 'NextResetCardView.swift', 'InstallationPreferences.swift', 'WeeklyResetReminder.swift')]
+                    'GaussianTextFrost.swift', 'NextResetCardView.swift', 'ChatUsageTrendView.swift', 'InstallationPreferences.swift', 'WeeklyResetReminder.swift')]
         subprocess.run(['swiftc', str(entry), *map(str, sources), '-o', str(binary),
                         '-framework', 'SwiftUI', '-framework', 'AppKit', '-framework', 'UserNotifications',
                         '-module-cache-path', str(stage / 'module-cache')], check=True)

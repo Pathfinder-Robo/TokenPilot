@@ -8,12 +8,15 @@ TokenPilot processes usage metadata and appearance preferences locally, with the
 
 - **Codex Session Logs (`${CODEX_HOME:-~/.codex}/sessions/` and `archived_sessions/`)**:
   - `bridge.py` tails `*.jsonl` files and filters for lines containing `"token_usage_record"` or `"token_count"`.
-  - Only timestamps, response IDs, numerical token counts (`total`, `input`, `cached`, `output`), and rate-limit window percentages are retained in memory.
+  - The collector retains timestamps, response and chat attribution metadata, numerical token counts (`total`, `input`, `cached`, `output`), and rate-limit window percentages in memory.
   - Raw session lines are read locally before filtering and matching records are parsed as JSON. Conversation text is not retained or displayed by the viewer, but the source files can contain it. The viewer does not upload those source logs.
 - **Gemini Worker Numeric Summaries (`${CODEX_HOME:-~/.codex}/argon/`)**:
   - Prefers numeric usage summaries from `argon/usage-cache/*.json`. Legacy fallbacks parse `runs.jsonl`, `outcomes.jsonl`, `interaction-*.json`, or `result.json` locally to extract usage; those legacy files may also contain task content.
+- **Chat titles and device usage**
+  - Reads titles and parent-chat relationships from the local `session_index.jsonl` and `state_5.sqlite` for display and attribution.
+  - The optional device exporter writes a usage snapshot to standard output. Version 2 includes timestamps, hashed identifiers, numeric summaries, and relevant titles present in the session index. The viewer reads device snapshots from local files. The exporter and viewer do not transfer those files on their own.
 - **Local Viewer State**:
-  - Writes routing preference to `argon/routing.json` (`0600`) and viewer caches/state to `argon/viewer/quota-history.json`, `argon/viewer/nextreset-cache.json`, and `argon/viewer/ui-state.json`.
+  - Writes routing preference to `argon/routing.json` (`0600`) and viewer caches/state to `argon/viewer/quota-history.json`, `argon/viewer/reset-tracker.json`, `argon/viewer/nextreset-cache.json`, and `argon/viewer/ui-state.json`.
 - **Guided Appearance Preference Inference (`app/InstallationPreferences.swift`, `configure_app.py`)**:
   - **Local Appearance & OS Reads**: Reads only the app's local `UserDefaults` entry (`TokenPilot.AppearanceSettings.v2` under bundle identifier `local.routingfloat.viewer`), macOS `Locale.preferredLanguages`, and `NSApp.effectiveAppearance` (`aqua` / `darkAqua`).
   - **Read-Only Inspection (`--inspect-install-preferences`, `configure_app.py --inspect`)**: Emits a JSON proposal and exits without writing preferences, creating windows, starting `bridge.py`, making network requests, or reading credentials.

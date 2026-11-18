@@ -21,6 +21,23 @@ def finite(value):
     return isinstance(value, (float, int)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _extract_window_entry(window):
+    if not isinstance(window, dict):
+        return None
+    used = window.get('used', window.get('used_percent', window.get('usedPercent')))
+    if not finite(used) or used < 0 or used > 100:
+        return None
+    reset_val = window.get('reset', window.get('resets_at', window.get('resetsAt')))
+    if reset_val is not None and not (finite(reset_val) and reset_val > 0):
+        return None
+    entry = {'used': min(100, max(0, used)), 'reset': reset_val}
+    for exact_key in ('last_reset_at', 'lastResetAt', 'reset_at', 'resetAt'):
+        if exact_key in window and window[exact_key] is not None:
+            entry['last_reset_at'] = window[exact_key]
+            break
+    return entry
+
+
 def log_sample(stamp, raw):
     at = epoch(stamp)
     if at is None or not isinstance(raw, dict):
@@ -32,10 +49,15 @@ def log_sample(stamp, raw):
             continue
         duration = window.get('window_minutes', window.get('windowDurationMins'))
         label = {300: 'five_hour', 10080: 'weekly'}.get(duration)
-        used = window.get('used_percent', window.get('usedPercent'))
-        if label and finite(used):
-            answer[label] = {'used': min(100, max(0, used)),
-                             'reset': window.get('resets_at', window.get('resetsAt'))}
+        if label:
+            entry = _extract_window_entry(window)
+            if entry is not None:
+                answer[label] = entry
+    for direct_label in ('five_hour', 'weekly'):
+        if direct_label not in answer and isinstance(raw.get(direct_label), dict):
+            entry = _extract_window_entry(raw[direct_label])
+            if entry is not None:
+                answer[direct_label] = entry
     return answer if any(key in answer for key in ('five_hour', 'weekly')) else None
 
 
@@ -47,8 +69,15 @@ def current_sample(limits):
     for name in ('five_hour', 'weekly'):
         value = limits.get(name)
         if isinstance(value, dict) and finite(value.get('used_percent')):
-            sample[name] = {'used': value['used_percent'], 'reset': value.get('resets_at')}
-    return sample
+            used = value['used_percent']
+            if 0 <= used <= 100:
+                entry = {'used': used, 'reset': value.get('resets_at')}
+                for exact_key in ('last_reset_at', 'lastResetAt', 'reset_at', 'resetAt'):
+                    if exact_key in value and value[exact_key] is not None:
+                        entry['last_reset_at'] = value[exact_key]
+                        break
+                sample[name] = entry
+    return sample if any(key in sample for key in ('five_hour', 'weekly')) else None
 
 
 class QuotaHistory:
