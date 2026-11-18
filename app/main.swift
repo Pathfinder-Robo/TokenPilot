@@ -3,6 +3,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import UserNotifications
 
 struct Usage: Decodable {
     var total_tokens: Double = 0
@@ -1506,8 +1507,9 @@ final class DraggableHostingView<Content: View>: NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { true }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let model = FloatModel()
+    @MainActor private lazy var weeklyResetReminder = WeeklyResetReminder()
     let appearance = AppearanceStore()
     var panel: FloatingPanel!
     var settingsWindow: CustomizationWindow?
@@ -1521,6 +1523,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if arguments.contains("--ui-checks") {
             let ok = runSelfChecks()
             exit(ok ? 0 : 1)
+        }
+        if arguments.contains("--weekly-reset-reminder-status") {
+            Task {
+                await WeeklyResetReminder.printStatus()
+                exit(0)
+            }
+            return
         }
         if let i = arguments.firstIndex(of: "--render-preview"), arguments.count > i + 1 {
             renderPreview(to: arguments[i + 1])
@@ -1581,7 +1590,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        if !arguments.contains(where: { $0.hasPrefix("--test-") }) {
+            let center = UNUserNotificationCenter.current()
+            if center.delegate == nil {
+                center.delegate = self
+            }
+            model.$snapshot
+                .compactMap { $0?.limits }
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] limits in
+                    guard let self, limits.stale == false, limits.error == nil else { return }
+                    self.weeklyResetReminder.observe(
+                        resetAt: limits.weekly?.resets_at,
+                        fetchedAt: limits.fetched_at,
+                        chinese: self.appearance.language == .chinese
+                    )
+                }
+                .store(in: &cancellables)
+        }
         model.launch()
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
     }
 
     @objc func toggle() {

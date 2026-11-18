@@ -204,11 +204,19 @@ def main():
         entry.write_text(source.split(marker)[0] + (root / 'tests/native_preferences.swift').read_text())
         binary = stage / 'checks'
         sources = [app / name for name in ('Appearance.swift', 'LiquidGlassContent.swift',
-                    'GaussianTextFrost.swift', 'NextResetCardView.swift', 'InstallationPreferences.swift')]
+                    'GaussianTextFrost.swift', 'NextResetCardView.swift', 'InstallationPreferences.swift', 'WeeklyResetReminder.swift')]
         subprocess.run(['swiftc', str(entry), *map(str, sources), '-o', str(binary),
-                        '-framework', 'SwiftUI', '-framework', 'AppKit',
+                        '-framework', 'SwiftUI', '-framework', 'AppKit', '-framework', 'UserNotifications',
                         '-module-cache-path', str(stage / 'module-cache')], check=True)
-        return subprocess.run([str(binary)], check=False).returncode
+        result = subprocess.run([str(binary)], check=False)
+        if result.returncode:
+            return result.returncode
+        reminder_checks = stage / 'weekly-reset-reminder-checks'
+        subprocess.run(['swiftc', str(app / 'WeeklyResetReminder.swift'),
+                        str(root / 'tests/weekly_reset_reminder_checks.swift'), '-o', str(reminder_checks),
+                        '-framework', 'UserNotifications', '-module-cache-path', str(stage / 'module-cache')],
+                       check=True)
+        return subprocess.run([str(reminder_checks)], check=False).returncode
 
 
 if __name__ == '__main__':

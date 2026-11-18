@@ -70,13 +70,14 @@ if [ "$OS_NAME" = "Darwin" ]; then
 
   swiftc \
     "$SOURCE_DIR/main.swift" \
+    "$SOURCE_DIR/WeeklyResetReminder.swift" \
     "$SOURCE_DIR/Appearance.swift" \
     "$SOURCE_DIR/InstallationPreferences.swift" \
     "$SOURCE_DIR/LiquidGlassContent.swift" \
     "$SOURCE_DIR/GaussianTextFrost.swift" \
     "$SOURCE_DIR/NextResetCardView.swift" \
     -O -o "$APP_DIR/Contents/MacOS/TokenPilot" \
-    -framework SwiftUI -framework AppKit \
+    -framework SwiftUI -framework AppKit -framework UserNotifications \
     -module-cache-path "$MODULE_CACHE_DIR"
 
   if [ -f "$SOURCE_DIR/TokenPilot.icns" ]; then
@@ -154,6 +155,10 @@ codex_home = Path(os.environ.get('CODEX_HOME') or str(Path.home() / '.codex')).e
 PY
 
 if [ "$OS_NAME" = "Darwin" ]; then
+  # Remove Finder metadata that can make signing a locally built app fail.
+  for ATTRIBUTE in com.apple.FinderInfo com.apple.ResourceFork; do
+    /usr/bin/xattr -dr "$ATTRIBUTE" "$APP_DIR" 2>/dev/null || true
+  done
   codesign --force --deep --sign - "$APP_DIR"
 fi
 echo "Built $APP_DIR"
