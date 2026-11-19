@@ -283,7 +283,7 @@ private struct TrendSectionHeaderView: View {
 
     private var primaryLabels: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(loc.L("Codex usage trend", "Codex 用量趋势"))
+            Text(loc.L("Codex usage trend (last 3h)", "Codex 用量趋势（近 3 小时）"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(palette.readablePrimaryTextColor)
 

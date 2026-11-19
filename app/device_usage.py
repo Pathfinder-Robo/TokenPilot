@@ -17,7 +17,14 @@ import sys
 import threading
 import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from chat_attribution import build_chat_usage, is_valid_chat_key, merge_owner, put_chat_key, validate_chat_titles
+from chat_attribution import (
+    ROLLING_TREND_WINDOW_SECONDS,
+    build_chat_usage,
+    is_valid_chat_key,
+    merge_owner,
+    put_chat_key,
+    validate_chat_titles,
+)
 from pricing import (
     CACHED_INPUT_USD_PER_MILLION,
     OUTPUT_USD_PER_MILLION,
@@ -959,7 +966,18 @@ def _filter_validated_provider_to_range(provider_name, validated_prov, start_epo
     }
 
 
-def apply_historical_chat_keys(snapshot_path, device_id, provider):
+def _provider_partial_in_range(validated_prov, start_epoch, end_epoch):
+    unid_ts = validated_prov.get('unidentified_timestamps')
+    if unid_ts is not None:
+        for ts in unid_ts:
+            _, ts_ep = parse_iso_timestamp(ts)
+            if start_epoch <= ts_ep <= end_epoch:
+                return True
+        return False
+    return bool(validated_prov.get('partial'))
+
+
+def apply_historical_chat_keys(snapshot_path, device_id, *providers):
     """Use locally verified event identities while an older remote collector is still active."""
     path = snapshot_path.with_suffix('.chats.json')
     try:
@@ -975,10 +993,11 @@ def apply_historical_chat_keys(snapshot_path, device_id, provider):
     except (OSError, ValueError):
         return {}
 
-    provider['events'] = [
-        event if 'chat_key' in event else put_chat_key(dict(event), event_keys.get(event['id']))
-        for event in provider['events']
-    ]
+    for provider in providers:
+        provider['events'] = [
+            event if 'chat_key' in event else put_chat_key(dict(event), event_keys.get(event['id']))
+            for event in provider['events']
+        ]
     return titles
 
 
@@ -1161,6 +1180,9 @@ class DeviceUsageAggregator:
         else:
             period_start_epoch = today_midnight_epoch
 
+        trend_start_epoch = now_epoch - ROLLING_TREND_WINDOW_SECONDS
+        crosses_period_start = period_start_epoch > trend_start_epoch
+
         use_range_mode = bool(
             period_origin_available
             or period_start is not None
@@ -1224,6 +1246,35 @@ class DeviceUsageAggregator:
                     'gemini': local_gemini_validated,
                 }
             ]
+            local_has_timestamps = (
+                'unidentified_timestamps' in local_codex_validated
+                or all('timestamp' in ev for ev in local_codex_validated['events'])
+            )
+            build_chart_separately = crosses_period_start or not local_has_timestamps
+            chart_entries = []
+            if build_chart_separately:
+                if hasattr(codex_collector, 'collect_events_in_range'):
+                    local_chart_raw = codex_collector.collect_events_in_range(
+                        trend_start_epoch, now_epoch, include_timestamps=True
+                    )
+                    local_chart_codex = _validate_provider_payload(
+                        'codex', local_chart_raw, allow_chat_keys=True, allow_local_timestamps=True
+                    )
+                    chart_partial = False
+                else:
+                    local_chart_codex = local_codex_validated
+                    chart_partial = True
+                chart_entries.append({
+                    'id': local_cfg['id'],
+                    'name': local_cfg['name'],
+                    'codex': local_chart_codex,
+                })
+            else:
+                chart_partial = (
+                    _provider_partial_in_range(local_codex_validated, trend_start_epoch, now_epoch)
+                    or not local_codex_validated['usage']['available']
+                )
+
             # Coverage and freshness issues below affect both providers.
             partial = False
             remote_titles = {}
@@ -1236,6 +1287,7 @@ class DeviceUsageAggregator:
                 except ValueError as exc:
                     self.last_good.pop(rid, None)
                     partial = True
+                    chart_partial = True
                     warnings.append(f'{rname} snapshot path rejected: {exc}')
                     devices_out.append(_UnavailableDeviceRow(rid, rname))
                     continue
@@ -1243,6 +1295,7 @@ class DeviceUsageAggregator:
                 if not snap_path.exists():
                     self.last_good.pop(rid, None)
                     partial = True
+                    chart_partial = True
                     warnings.append(f'{rname} usage snapshot unavailable; combined total is partial')
                     devices_out.append(_UnavailableDeviceRow(rid, rname))
                     continue
@@ -1289,12 +1342,14 @@ class DeviceUsageAggregator:
                             )
                     if can_use_cached:
                         partial = True
+                        chart_partial = True
                         validated = self._recompute_cached_age(cached, now_epoch)
                         warnings.append(
                             f'{rname} incoming snapshot invalid ({validation_error}); preserving previous good snapshot'
                         )
                     else:
                         partial = True
+                        chart_partial = True
                         warnings.append(
                             f'{rname} usage snapshot unavailable ({validation_error}); combined total is partial'
                         )
@@ -1307,12 +1362,14 @@ class DeviceUsageAggregator:
                     period_origin_available or abs(period_start_epoch - today_midnight_epoch) > 1.0
                 ):
                     partial = True
+                    chart_partial = True
                     warnings.append(
                         f'{rname} usage snapshot uses legacy day-only schema 1 and cannot cover the reset period; combined total is partial'
                     )
                     devices_out.append(_UnavailableDeviceRow(rid, rname))
                     continue
 
+                codex_for_chart = None
                 if validated['schema'] == SCHEMA_V2:
                     codex_for_period = _filter_validated_provider_to_range(
                         'codex', validated['codex'], period_start_epoch, now_epoch
@@ -1340,17 +1397,55 @@ class DeviceUsageAggregator:
                         warnings.append(
                             f'{rname} usage snapshot predates the latest reset; combined total may be partial'
                         )
+
+                    chart_cov_incomplete = (
+                        cov_start_ep > trend_start_epoch + 1.0
+                        or cov_end_ep < trend_start_epoch
+                        or (now_epoch - cov_end_ep) > FRESH_THRESHOLD_SECONDS
+                    )
+                    if chart_cov_incomplete:
+                        chart_partial = True
+                    if build_chart_separately:
+                        codex_for_chart = _filter_validated_provider_to_range(
+                            'codex', validated['codex'], trend_start_epoch, now_epoch
+                        )
+                        if chart_cov_incomplete:
+                            codex_for_chart['partial'] = True
+                            codex_for_chart['usage']['partial'] = True
+                    elif (
+                        _provider_partial_in_range(validated['codex'], trend_start_epoch, now_epoch)
+                        or not codex_for_period['usage']['available']
+                    ):
+                        chart_partial = True
                 else:
                     codex_for_period = validated['codex']
                     gemini_for_period = validated['gemini']
+                    if (
+                        crosses_period_start
+                        or not codex_for_period['usage']['available']
+                        or codex_for_period['partial']
+                        or (
+                            build_chart_separately
+                            and any(any(ev[f] > 0 for f in TOKEN_FIELDS) for ev in codex_for_period['events'])
+                        )
+                    ):
+                        chart_partial = True
 
                 remote_titles.update(validated.get('chat_titles', {}))
                 if validated['schema'] == SCHEMA_V2:
-                    for key, title in apply_historical_chat_keys(snap_path, rid, codex_for_period).items():
+                    targets = (codex_for_period, codex_for_chart) if codex_for_chart is not None else (codex_for_period,)
+                    for key, title in apply_historical_chat_keys(snap_path, rid, *targets).items():
                         remote_titles.setdefault(key, title)
+                    if codex_for_chart is not None:
+                        chart_entries.append({
+                            'id': rid,
+                            'name': validated['device_name'] or rname,
+                            'codex': codex_for_chart,
+                        })
 
                 if validated['status'] != 'fresh':
                     partial = True
+                    chart_partial = True
                     warnings.append(
                         f"{rname} usage snapshot is stale ({validated['age_seconds']}s old); combined total may be partial"
                     )
@@ -1385,9 +1480,33 @@ class DeviceUsageAggregator:
             )
             total_dups = codex_dups + gemini_dups
             total_conflicts = codex_conflicts + gemini_conflicts
-            trend_partial = partial or codex_partial or any(
-                not entry['codex']['usage']['available'] for entry in active_entries
-            )
+            if build_chart_separately:
+                chart_codex_events = []
+                chart_warnings = []
+                _, _, chart_codex_conflicts, chart_codex_partial = combine_provider_events(
+                    'codex', chart_entries, chart_warnings, events_out=chart_codex_events
+                )
+                trend_partial = (
+                    chart_partial
+                    or chart_codex_partial
+                    or chart_codex_conflicts > 0
+                    or any(not entry['codex']['usage']['available'] for entry in chart_entries)
+                )
+            else:
+                chart_codex_events = []
+                for ev in providers['codex']:
+                    ts = ev.get('timestamp')
+                    if ts is None:
+                        if any(ev[f] > 0 for f in TOKEN_FIELDS):
+                            chart_partial = True
+                        continue
+                    _, ev_ep = parse_iso_timestamp(ts)
+                    if trend_start_epoch <= ev_ep <= now_epoch:
+                        chart_codex_events.append(ev)
+                if codex_conflicts > 0:
+                    chart_partial = True
+                trend_partial = chart_partial
+
             if codex_partial or gemini_partial or total_conflicts > 0:
                 partial = True
             if partial:
@@ -1417,6 +1536,7 @@ class DeviceUsageAggregator:
                     period_start_epoch, now_epoch, providers, remote_titles,
                     partial or not combined_codex['available'] or not combined_gemini['available'],
                     trend_partial=trend_partial,
+                    trend_codex_events=chart_codex_events,
                 ),
             }
 

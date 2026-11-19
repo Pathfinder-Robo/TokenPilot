@@ -34,6 +34,7 @@ from reset_tracker import ResetTracker
 from chat_attribution import (
     ChatAttributionResolver,
     OWNER_CONFLICT,
+    ROLLING_TREND_WINDOW_SECONDS,
     build_chat_usage,
     extract_uuid_from_filename,
     merge_owner,
@@ -1321,14 +1322,38 @@ class Bridge:
         if agg['devices'] is not None and agg['totals'] is not None:
             result['devices'] = agg['devices']
             result['totals'] = agg['totals']
-        result['chat_usage'] = agg.get('chat_usage') or build_chat_usage(
-            period_start_epoch, now_epoch,
-            {'codex': codex_events['events'], 'gemini': gemini_events['events']},
-            self.codex.chat_attribution.titles(),
-            codex_events['partial'] or gemini_events['partial'] or bool(agg['warnings'])
-            or not codex_events['available'] or not gemini_events['available'],
-            trend_partial=codex_events['partial'] or not codex_events['available'] or bool(agg['warnings']),
-        )
+        if agg.get('chat_usage') is not None:
+            result['chat_usage'] = agg['chat_usage']
+        else:
+            trend_start_epoch = now_epoch - ROLLING_TREND_WINDOW_SECONDS
+            if period_start_epoch > trend_start_epoch:
+                trend_codex = self.codex.collect_events_in_range(
+                    trend_start_epoch, now_epoch, include_timestamps=True
+                )
+                trend_codex_events = trend_codex['events']
+                local_trend_partial = trend_codex['partial'] or not trend_codex['available']
+            else:
+                trend_codex_events = [
+                    ev for ev in codex_events['events']
+                    if ev.get('timestamp') is None
+                    or in_range_timestamp(ev.get('timestamp'), trend_start_epoch, now_epoch)[0]
+                ]
+                unid_ts = codex_events.get('unidentified_timestamps')
+                unid_in_trend = (
+                    any(in_range_timestamp(ts, trend_start_epoch, now_epoch)[0] for ts in unid_ts)
+                    if unid_ts is not None
+                    else codex_events['partial']
+                )
+                local_trend_partial = unid_in_trend or not codex_events['available']
+            result['chat_usage'] = build_chat_usage(
+                period_start_epoch, now_epoch,
+                {'codex': codex_events['events'], 'gemini': gemini_events['events']},
+                self.codex.chat_attribution.titles(),
+                codex_events['partial'] or gemini_events['partial'] or bool(agg['warnings'])
+                or not codex_events['available'] or not gemini_events['available'],
+                trend_partial=local_trend_partial or bool(agg['warnings']),
+                trend_codex_events=trend_codex_events,
+            )
         return result
 
     def serve(self):

@@ -15,6 +15,7 @@ for _path in (ROOT / 'app', ROOT / 'routing' / 'scripts', ROOT):
         sys.path.insert(0, str(_path))
 
 import bridge
+import chat_attribution
 import device_usage
 import routing_control
 
@@ -608,6 +609,204 @@ class DeviceUsageTests(unittest.TestCase):
         self.assertEqual(snap['providers']['gemini']['total_tokens'], 0)
         self.assertFalse(snap['providers']['gemini']['available'])
         self.assertTrue(snap['providers']['gemini']['partial'])
+
+    def test_rolling_3h_chart_crosses_midnight_and_reset_with_schema2_dedup(self):
+        # 2026-10-24T17:00:00Z == 2026-10-25 01:00:00+08:00 in Asia/Shanghai.
+        # Local midnight is 16:00:00Z (now - 1h); rolling 3h chart spans [14:00:00Z, 17:00:00Z].
+        cross_now_iso = '2026-10-24T17:00:00Z'
+        cross_now_epoch = datetime.fromisoformat(cross_now_iso.replace('Z', '+00:00')).timestamp()
+
+        u_shared = '11111111-1111-1111-1111-111111111111'
+        u_ubuntu_pre = '22222222-2222-2222-2222-222222222222'
+        u_mac_pre = '33333333-3333-3333-3333-333333333333'
+        u_mac_post = '44444444-4444-4444-4444-444444444444'
+        u_old = '55555555-5555-5555-5555-555555555555'
+
+        k_shared = chat_attribution.hash_chat_key(u_shared)
+        k_ubuntu_pre = chat_attribution.hash_chat_key(u_ubuntu_pre)
+        k_mac_pre = chat_attribution.hash_chat_key(u_mac_pre)
+        k_mac_post = chat_attribution.hash_chat_key(u_mac_post)
+
+        self.write_jsonl(
+            self.mac_home / 'session_index.jsonl',
+            [
+                {'id': u_shared, 'thread_name': 'Shared Cross-Device'},
+                {'id': u_mac_pre, 'thread_name': 'Mac Yesterday'},
+                {'id': u_mac_post, 'thread_name': 'Mac Today'},
+            ],
+        )
+        self.write_jsonl(
+            self.ubuntu_home / 'session_index.jsonl',
+            [
+                {'id': u_shared, 'thread_name': 'Shared Cross-Device'},
+                {'id': u_ubuntu_pre, 'thread_name': 'Ubuntu Pre-Boundary'},
+            ],
+        )
+
+        shared_pre = codex_record(
+            'shared-pre-resp', '2026-10-24T15:00:00Z',
+            total=200_000, cached=0, inp=0, out=200_000,  # $2.00 in bucket 4 (15:00..15:15Z)
+        )
+        mac_pre = codex_record(
+            'mac-pre-resp', '2026-10-24T15:30:00Z',
+            total=500_000, cached=0, inp=500_000, out=0,  # $1.00 in bucket 6 (15:30..15:45Z)
+        )
+        ubuntu_pre = codex_record(
+            'ubuntu-pre-resp', '2026-10-24T14:20:00Z',
+            total=400_000, cached=0, inp=0, out=400_000,  # $4.00 in bucket 1 (14:15..14:30Z)
+        )
+        too_old = codex_record(
+            'before-3h-cutoff', '2026-10-24T13:59:59Z',
+            total=2_000_000, cached=0, inp=0, out=2_000_000,  # $20.00 before 14:00Z cutoff
+        )
+        mac_post = codex_record(
+            'mac-post-resp', '2026-10-24T16:50:00Z',
+            total=250_000, cached=0, inp=250_000, out=0,  # $0.50 in bucket 11 (16:45..17:00Z)
+        )
+
+        self.write_jsonl(self.mac_home / f'sessions/rollout-{u_shared}.jsonl', [shared_pre])
+        self.write_jsonl(self.mac_home / f'sessions/rollout-{u_mac_pre}.jsonl', [mac_pre])
+        self.write_jsonl(self.mac_home / f'sessions/rollout-{u_old}.jsonl', [too_old])
+        self.write_jsonl(self.mac_home / f'sessions/rollout-{u_mac_post}.jsonl', [mac_post])
+
+        self.write_jsonl(self.ubuntu_home / f'sessions/rollout-{u_shared}.jsonl', [shared_pre])
+        self.write_jsonl(self.ubuntu_home / f'sessions/rollout-{u_ubuntu_pre}.jsonl', [ubuntu_pre])
+        routing_control.write_run_state(
+            self.ubuntu_home,
+            self.ubuntu_home / 'ubuntu-gem-post',
+            started_at='2026-10-24T16:40:00Z',
+            interaction={
+                'id': 'ubuntu-gem-post-1',
+                'created': '2026-10-24T16:41:00Z',
+                'usage': {
+                    'total_tokens': 500_000,
+                    'total_cached_tokens': 0,
+                    'total_input_tokens': 0,
+                    'total_output_tokens': 500_000,
+                    'total_thought_tokens': 0,
+                },
+            },
+            status='completed',
+        )
+
+        # 1. Standalone Mac (no manifest) crossing local midnight
+        standalone_bridge = bridge.Bridge(self.mac_home, None, TZ, offline=True)
+        standalone_snap = standalone_bridge.snapshot(refresh=False, now=cross_now_epoch)
+        self.assertEqual(standalone_snap['codex']['total_tokens'], 250_000)  # today only
+        self.assertEqual([r['id'] for r in standalone_snap['chat_usage']['rows']], [k_mac_post])
+        st_trend = standalone_snap['chat_usage']['trend']
+        self.assertEqual(st_trend['bucket_seconds'], 900)
+        self.assertEqual(len(st_trend['buckets']), 12)
+        self.assertFalse(st_trend['partial'])
+        self.assertEqual(
+            [c['id'] for c in st_trend['top_chats']],
+            [k_shared, k_mac_pre, k_mac_post],
+        )
+        self.assertAlmostEqual(sum(b['total_usd'] for b in st_trend['buckets']), 3.5)
+
+        # 2. Multi-device Mac + Ubuntu schema-2 crossing local midnight with deduplicated shared session
+        self.write_manifest()
+        exporter_v2 = device_usage.DeviceExporter(
+            self.ubuntu_home, 'ubuntu', 'Ubuntu', TZ_NAME, schema=2, history_days=7,
+        )
+        self.write_remote_snapshot(exporter_v2.snapshot(now=cross_now_epoch - 10))
+
+        multi_bridge = bridge.Bridge(self.mac_home, None, TZ, offline=True)
+        snap_midnight = multi_bridge.snapshot(refresh=False, now=cross_now_epoch)
+
+        # Totals and table stay strictly post-midnight (Mac $0.50 Codex, Ubuntu $5.00 Gemini)
+        self.assertFalse(snap_midnight['totals']['partial'])
+        self.assertEqual(snap_midnight['totals']['codex']['total_tokens'], 250_000)
+        self.assertEqual(snap_midnight['totals']['gemini']['total_tokens'], 500_000)
+        table_ids = {r['id'] for r in snap_midnight['chat_usage']['rows']}
+        self.assertEqual(table_ids, {k_mac_post, 'unattributed'})
+
+        # Rolling 3h chart includes pre-midnight Mac + Ubuntu Codex, deduplicates shared_pre, excludes Gemini
+        trend = snap_midnight['chat_usage']['trend']
+        self.assertEqual(trend['bucket_seconds'], 900)
+        self.assertEqual(len(trend['buckets']), 12)
+        self.assertFalse(trend['partial'])
+        self.assertEqual(trend['buckets'][0]['start_at'], '2026-10-24T14:00:00Z')
+        self.assertEqual(trend['buckets'][11]['end_at'], '2026-10-24T17:00:00Z')
+        self.assertEqual(
+            trend['top_chats'],
+            [
+                {'id': k_ubuntu_pre, 'title': 'Ubuntu Pre-Boundary', 'codex_usd': 4.0},
+                {'id': k_shared, 'title': 'Shared Cross-Device', 'codex_usd': 2.0},
+                {'id': k_mac_pre, 'title': 'Mac Yesterday', 'codex_usd': 1.0},
+            ],
+        )
+        self.assertAlmostEqual(trend['buckets'][1]['total_usd'], 4.0)
+        self.assertAlmostEqual(trend['buckets'][4]['total_usd'], 2.0)  # deduplicated ($2, not $4)
+        self.assertAlmostEqual(trend['buckets'][6]['total_usd'], 1.0)
+        self.assertAlmostEqual(trend['buckets'][11]['total_usd'], 0.5)  # k_mac_post in total, 4th place
+        self.assertAlmostEqual(sum(b['total_usd'] for b in trend['buckets']), 7.5)
+
+        # 3. Active weekly quota reset 30m before now (16:30:00Z): period shrinks to 30m, 3h chart unchanged
+        reset_epoch = cross_now_epoch - 1800
+        multi_bridge.reset_tracker.update(
+            [
+                {'at': reset_epoch - 60, 'bucket': 'codex', 'weekly': {'used': 75.0, 'reset': reset_epoch}},
+                {'at': reset_epoch, 'bucket': 'codex', 'weekly': {'used': 0.0, 'reset': reset_epoch + 604800}},
+            ],
+            now=cross_now_epoch,
+        )
+        snap_reset = multi_bridge.snapshot(refresh=False, now=cross_now_epoch)
+        self.assertTrue(snap_reset['reset_period']['available'])
+        self.assertEqual(snap_reset['totals']['codex']['total_tokens'], 250_000)
+        self.assertEqual(snap_reset['chat_usage']['trend']['top_chats'], trend['top_chats'])
+        self.assertAlmostEqual(
+            sum(b['total_usd'] for b in snap_reset['chat_usage']['trend']['buckets']),
+            7.5,
+        )
+
+    def test_schema1_remote_never_fabricates_chart_points_and_marks_trend_partial(self):
+        self.write_manifest()
+        u_mac = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        self.write_jsonl(
+            self.mac_home / f'sessions/rollout-{u_mac}.jsonl',
+            [codex_record('mac-recent', '2026-10-24T07:30:00Z', total=500_000, cached=0, inp=500_000, out=0)],
+        )
+        self.write_jsonl(
+            self.ubuntu_home / 'sessions/ubuntu.jsonl',
+            [codex_record('ubuntu-s1-only', '2026-10-24T07:40:00Z', total=300_000, cached=0, inp=0, out=300_000)],
+        )
+
+        # Legacy schema-1 snapshot during same local day (period_start <= now - 3h)
+        exporter_v1 = device_usage.DeviceExporter(self.ubuntu_home, 'ubuntu', 'Ubuntu', TZ_NAME, schema=1)
+        self.write_remote_snapshot(exporter_v1.snapshot(now=NOW_EPOCH - 10))
+
+        b = bridge.Bridge(self.mac_home, None, TZ, offline=True)
+        snap = b.snapshot(refresh=False, now=NOW_EPOCH)
+        self.assertFalse(snap['totals']['partial'])
+        self.assertEqual(snap['totals']['codex']['total_tokens'], 800_000)
+
+        trend = snap['chat_usage']['trend']
+        self.assertEqual(trend['bucket_seconds'], 900)
+        self.assertEqual(len(trend['buckets']), 12)
+        self.assertTrue(trend['partial'])
+        # Only Mac's timestamped $1.00 event appears in chart; Ubuntu's schema-1 $3.00 is never fabricated
+        self.assertAlmostEqual(sum(b['total_usd'] for b in trend['buckets']), 1.0)
+
+        # Crossing local midnight (01:00+08:00 = 17:00Z): schema-1 covers today's totals, not pre-midnight 3h chart
+        cross_epoch = datetime.fromisoformat('2026-10-24T17:00:00+00:00').timestamp()
+        self.write_jsonl(
+            self.mac_home / f'sessions/rollout-{u_mac}.jsonl',
+            [
+                codex_record('mac-recent', '2026-10-24T07:30:00Z', total=500_000, cached=0, inp=500_000, out=0),
+                codex_record('mac-pre-mid', '2026-10-24T15:00:00Z', total=500_000, cached=0, inp=500_000, out=0),
+                codex_record('mac-post-mid', '2026-10-24T16:30:00Z', total=250_000, cached=0, inp=250_000, out=0),
+            ],
+        )
+        self.write_remote_snapshot(exporter_v1.snapshot(now=cross_epoch - 5))
+        snap_cross = b.snapshot(refresh=False, now=cross_epoch)
+        self.assertFalse(snap_cross['totals']['partial'])
+        self.assertEqual(snap_cross['totals']['codex']['total_tokens'], 250_000)
+        self.assertTrue(snap_cross['chat_usage']['trend']['partial'])
+        self.assertAlmostEqual(
+            sum(bucket['total_usd'] for bucket in snap_cross['chat_usage']['trend']['buckets']),
+            1.5,
+        )
 
 
 if __name__ == '__main__':

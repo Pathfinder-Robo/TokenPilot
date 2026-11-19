@@ -6,7 +6,12 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'app'))
 
-from chat_usage_trend import build_usage_trend
+from chat_attribution import build_chat_usage
+from chat_usage_trend import (
+    ROLLING_TREND_BUCKET_SECONDS,
+    ROLLING_TREND_WINDOW_SECONDS,
+    build_usage_trend,
+)
 from pricing import estimate_usage_usd
 
 
@@ -214,6 +219,107 @@ class ChatUsageTrendTests(unittest.TestCase):
         )
         self.assertTrue(naive_res["partial"])
         self.assertEqual(naive_res["buckets"][0]["total_usd"], 0.0)
+
+    def test_scoped_3h_15m_cutoff_ranking_and_table_preservation(self):
+        self.assertEqual(ROLLING_TREND_WINDOW_SECONDS, 10800)
+        self.assertEqual(ROLLING_TREND_BUCKET_SECONDS, 900)
+
+        now_epoch = datetime(2026, 10, 27, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+        period_start = now_epoch - 2 * 86400  # 48h reset period; trend must stay last 3h (09:00..12:00Z)
+
+        titles = {
+            "c_global_whale": "Global Whale",
+            "c_before_cutoff": "Before Cutoff",
+            "c_recent_leader": "Recent Leader",
+            "c_tie_a": "Tie A",
+            "c_tie_b": "Tie B",
+            "c_gemini_whale": "Gemini Whale",
+        }
+
+        codex_events = [
+            # Huge earlier event in reset period (outside 3h) + small recent event ($0.20 in 3h -> 4th place)
+            _event(ts="2026-10-27T01:00:00Z", chat_key="c_global_whale", output_tokens=4_000_000),  # $40.00
+            _event(ts="2026-10-27T10:30:00Z", chat_key="c_global_whale", input_tokens=100_000),     # $0.20 (bucket 6)
+            # 1 second before 3h cutoff -> in table, strictly excluded from 3h chart & ranking
+            _event(ts="2026-10-27T08:59:59Z", chat_key="c_before_cutoff", output_tokens=9_000_000),  # $90.00
+            # Unpriced event before 3h cutoff -> must not make 3h trend partial or produce top row
+            _event(ts="2026-10-27T08:00:00Z", chat_key="c_unpriced_old", total_tokens=500),
+            # Exact 3h cutoff (09:00:00Z -> bucket 0), split into 3 events of $0.20 = $0.60 total
+            _event(ts="2026-10-27T09:00:00Z", chat_key="c_tie_b", input_tokens=100_000),
+            _event(ts="2026-10-27T09:05:00Z", chat_key="c_tie_b", input_tokens=100_000),
+            _event(ts="2026-10-27T09:10:00Z", chat_key="c_tie_b", input_tokens=100_000),
+            # Exact now boundary (12:00:00Z -> bucket 11), single event of $0.60 tying c_tie_b
+            _event(ts="2026-10-27T12:00:00Z", chat_key="c_tie_a", input_tokens=300_000),
+            # 1 second after now -> excluded from 3h chart & ranking
+            _event(ts="2026-10-27T12:00:01Z", chat_key="c_after_now", output_tokens=5_000_000),
+            # Highest in-window Codex chat ($3.00 at 11:20Z -> bucket 9)
+            _event(ts="2026-10-27T11:20:00Z", chat_key="c_recent_leader", output_tokens=300_000),
+            # Unattributed in-window Codex ($1.00 at 10:35Z -> bucket 6) -> in total_usd, excluded from top_chats
+            _event(ts="2026-10-27T10:35:00Z", input_tokens=500_000),
+        ]
+        gemini_events = [
+            _event(ts="2026-10-27T11:15:00Z", chat_key="c_gemini_whale", output_tokens=10_000_000),  # $100.00
+        ]
+
+        usage = build_chat_usage(
+            period_start,
+            now_epoch,
+            {"codex": codex_events, "gemini": gemini_events},
+            titles,
+            False,
+            trend_partial=False,
+        )
+
+        # Full reset-period table and bounds remain intact
+        self.assertEqual(usage["start_at"], "2026-10-25T12:00:00+00:00")
+        self.assertEqual(usage["end_at"], "2026-10-27T12:00:00+00:00")
+        self.assertTrue(usage["partial"])  # table has unattributed row
+        rows_by_id = {row["id"]: row for row in usage["rows"]}
+        self.assertAlmostEqual(rows_by_id["c_before_cutoff"]["codex"]["estimated_usd"], 90.0)
+        self.assertAlmostEqual(rows_by_id["c_global_whale"]["codex"]["estimated_usd"], 40.2)
+        self.assertAlmostEqual(rows_by_id["c_gemini_whale"]["gemini"]["estimated_usd"], 100.0)
+        self.assertNotIn("codex", rows_by_id["c_gemini_whale"])
+
+        # Trend is strictly [now - 3h, now] in 12 x 15m buckets, ranked by 3h Codex USD only
+        trend = usage["trend"]
+        self.assertEqual(trend["bucket_seconds"], 900)
+        self.assertFalse(trend["partial"])
+        self.assertEqual(len(trend["buckets"]), 12)
+        self.assertEqual(trend["buckets"][0]["start_at"], "2026-10-27T09:00:00Z")
+        self.assertEqual(trend["buckets"][0]["end_at"], "2026-10-27T09:15:00Z")
+        self.assertEqual(trend["buckets"][11]["start_at"], "2026-10-27T11:45:00Z")
+        self.assertEqual(trend["buckets"][11]["end_at"], "2026-10-27T12:00:00Z")
+
+        self.assertEqual(
+            trend["top_chats"],
+            [
+                {"id": "c_recent_leader", "title": "Recent Leader", "codex_usd": 3.0},
+                {"id": "c_tie_a", "title": "Tie A", "codex_usd": 0.6},
+                {"id": "c_tie_b", "title": "Tie B", "codex_usd": 0.6},
+            ],
+        )
+
+        # Bucket 0: c_tie_b ($0.60)
+        self.assertAlmostEqual(trend["buckets"][0]["total_usd"], 0.6)
+        self.assertAlmostEqual(trend["buckets"][0]["chat_usd"]["c_tie_b"], 0.6)
+        self.assertEqual(trend["buckets"][0]["chat_usd"]["c_tie_a"], 0.0)
+        # Bucket 6 (10:30..10:45Z): c_global_whale ($0.20) + unattributed ($1.00) = $1.20 total, 0 on top 3
+        self.assertAlmostEqual(trend["buckets"][6]["total_usd"], 1.2)
+        self.assertEqual(
+            trend["buckets"][6]["chat_usd"],
+            {"c_recent_leader": 0.0, "c_tie_a": 0.0, "c_tie_b": 0.0},
+        )
+        # Bucket 9 (11:15..11:30Z): c_recent_leader ($3.00), Gemini whale excluded
+        self.assertAlmostEqual(trend["buckets"][9]["total_usd"], 3.0)
+        self.assertAlmostEqual(trend["buckets"][9]["chat_usd"]["c_recent_leader"], 3.0)
+        # Bucket 11 (11:45..12:00Z): c_tie_a ($0.60) on exact end boundary; 12:00:01Z excluded
+        self.assertAlmostEqual(trend["buckets"][11]["total_usd"], 0.6)
+        self.assertAlmostEqual(trend["buckets"][11]["chat_usd"]["c_tie_a"], 0.6)
+
+        # Fractional now epoch still produces exactly 12 buckets without float rounding overflow
+        frac_usage = build_chat_usage(period_start, 10800.3, {"codex": [], "gemini": []}, {}, False)
+        self.assertEqual(frac_usage["trend"]["bucket_seconds"], 900)
+        self.assertEqual(len(frac_usage["trend"]["buckets"]), 12)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,11 @@ from pathlib import Path
 import re
 import sqlite3
 
-from chat_usage_trend import build_usage_trend
+from chat_usage_trend import (
+    ROLLING_TREND_BUCKET_SECONDS,
+    ROLLING_TREND_WINDOW_SECONDS,
+    build_usage_trend,
+)
 from pricing import enrich_usage_with_pricing, event_has_valid_categories
 
 TOKEN_FIELDS = ('total_tokens', 'cached_tokens', 'input_tokens', 'output_tokens')
@@ -158,7 +162,16 @@ def put_chat_key(event, key):
     return event
 
 
-def build_chat_usage(start, end, providers, titles, partial, *, trend_partial=None):
+def build_chat_usage(
+    start,
+    end,
+    providers,
+    titles,
+    partial,
+    *,
+    trend_partial=None,
+    trend_codex_events=None,
+):
     rows = {}
     for provider, events in providers.items():
         groups = {}
@@ -176,12 +189,19 @@ def build_chat_usage(start, end, providers, titles, partial, *, trend_partial=No
         return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
 
     chat_rows = list(rows.values())
+    trend_events = providers.get('codex', ()) if trend_codex_events is None else trend_codex_events
     return {
         'start_at': stamp(start),
         'end_at': stamp(end),
         'partial': partial or 'unattributed' in rows,
         'rows': chat_rows,
         'trend': build_usage_trend(
-            start, end, providers, chat_rows, partial if trend_partial is None else trend_partial,
+            end - ROLLING_TREND_WINDOW_SECONDS,
+            end,
+            {'codex': trend_events},
+            None,
+            partial if trend_partial is None else trend_partial,
+            bucket_seconds=ROLLING_TREND_BUCKET_SECONDS,
+            titles=titles,
         ),
     }
