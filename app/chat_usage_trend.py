@@ -120,7 +120,7 @@ def build_usage_trend(
     rows: Sequence[Mapping[str, Any]],
     partial: bool,
 ) -> dict[str, Any]:
-    """Build interval usage USD trend across providers and top Codex chats."""
+    """Build interval Codex usage in reference USD overall and for the top chats."""
     if not (_is_valid_finite_number(start) and _is_valid_finite_number(end)):
         raise ValueError("start and end must be finite numbers")
     start_f = float(start)
@@ -147,39 +147,35 @@ def build_usage_trend(
 
     is_partial = bool(partial)
 
-    for provider_name in ("codex", "gemini"):
-        provider_events = providers.get(provider_name)
-        if not provider_events:
+    for event in providers.get("codex", ()):
+        if _is_all_zero_event(event):
             continue
-        for event in provider_events:
-            if _is_all_zero_event(event):
-                continue
 
-            ts = _parse_iso_epoch(event.get("timestamp"))
-            if ts is None:
-                is_partial = True
-                continue
+        ts = _parse_iso_epoch(event.get("timestamp"))
+        if ts is None:
+            is_partial = True
+            continue
 
-            if ts < start_f or ts > end_f:
-                continue
+        if ts < start_f or ts > end_f:
+            continue
 
-            bucket_idx = _locate_bucket_index(ts, start_f, end_f, bucket_seconds, edges)
-            cost = estimate_usage_usd(event)
-            chat_key = event.get("chat_key")
-            chat_idx = selected_index.get(chat_key) if isinstance(chat_key, str) else None
+        bucket_idx = _locate_bucket_index(ts, start_f, end_f, bucket_seconds, edges)
+        cost = estimate_usage_usd(event)
+        chat_key = event.get("chat_key")
+        chat_idx = selected_index.get(chat_key) if isinstance(chat_key, str) else None
 
-            if cost is None or not _is_valid_finite_number(cost) or cost < 0:
-                is_partial = True
-                total_has_unpriced[bucket_idx] = True
-                if chat_idx is not None:
-                    chat_has_unpriced[bucket_idx][chat_idx] = True
-            else:
-                cost_f = float(cost)
-                total_priced_sum[bucket_idx] += cost_f
-                total_has_priced[bucket_idx] = True
-                if chat_idx is not None:
-                    chat_priced_sum[bucket_idx][chat_idx] += cost_f
-                    chat_has_priced[bucket_idx][chat_idx] = True
+        if cost is None or not _is_valid_finite_number(cost) or cost < 0:
+            is_partial = True
+            total_has_unpriced[bucket_idx] = True
+            if chat_idx is not None:
+                chat_has_unpriced[bucket_idx][chat_idx] = True
+        else:
+            cost_f = float(cost)
+            total_priced_sum[bucket_idx] += cost_f
+            total_has_priced[bucket_idx] = True
+            if chat_idx is not None:
+                chat_priced_sum[bucket_idx][chat_idx] += cost_f
+                chat_has_priced[bucket_idx][chat_idx] = True
 
     iso_edges = [_format_utc_iso(edge) for edge in edges]
     buckets: list[dict[str, Any]] = []

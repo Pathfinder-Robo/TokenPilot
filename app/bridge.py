@@ -1327,6 +1327,7 @@ class Bridge:
             self.codex.chat_attribution.titles(),
             codex_events['partial'] or gemini_events['partial'] or bool(agg['warnings'])
             or not codex_events['available'] or not gemini_events['available'],
+            trend_partial=codex_events['partial'] or not codex_events['available'] or bool(agg['warnings']),
         )
         return result
 

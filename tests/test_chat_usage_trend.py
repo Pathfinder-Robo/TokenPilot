@@ -69,7 +69,7 @@ class ChatUsageTrendTests(unittest.TestCase):
         self.assertEqual(len(res_45d["buckets"]), 45)
         self.assertTrue(res_45d["partial"])
 
-    def test_boundaries_top_chats_providers_and_immutability(self):
+    def test_boundaries_top_chats_exclude_gemini_and_do_not_mutate(self):
         start = datetime(2026, 10, 27, 10, 0, 0, tzinfo=timezone.utc).timestamp()
         end = start + 5400  # 1.5h -> [10:00..11:00), [11:00..11:30]
 
@@ -92,8 +92,9 @@ class ChatUsageTrendTests(unittest.TestCase):
         e_after = _event(ts="2026-10-27T11:30:01Z", total_tokens=500, input_tokens=0, output_tokens=0)
 
         providers = {
-            "codex": [e_before, e_start, e_end_b1, e_after],
-            "gemini": [e_offset_b0, e_edge_b1, e_other_chat],
+            "codex": [e_before, e_start, e_offset_b0, e_edge_b1, e_end_b1, e_after],
+            "gemini": [e_other_chat, _event(ts="2026-10-27T10:15:00Z", chat_key="c_top", input_tokens=1_000_000),
+                       _event(chat_key="c_top", total_tokens=1)],
         }
         providers_snapshot = deepcopy(providers)
         rows_snapshot = deepcopy(rows)
@@ -129,8 +130,8 @@ class ChatUsageTrendTests(unittest.TestCase):
         self.assertAlmostEqual(buckets[0]["chat_usd"]["c_tie_a"], 1.0)
         self.assertEqual(buckets[0]["chat_usd"]["c_tie_b"], 0.0)
 
-        # Bucket 1 (non-cumulative): e_edge_b1 ($2.00 on c_top) + e_end_b1 ($0.50) + e_other_chat ($0.50)
-        self.assertAlmostEqual(buckets[1]["total_usd"], 3.0)
+        # Bucket 1 contains $2.00 on c_top and $0.50 of unattributed Codex usage.
+        self.assertAlmostEqual(buckets[1]["total_usd"], 2.5)
         self.assertAlmostEqual(buckets[1]["chat_usd"]["c_top"], 2.0)
         self.assertEqual(buckets[1]["chat_usd"]["c_tie_a"], 0.0)
         self.assertEqual(buckets[1]["chat_usd"]["c_tie_b"], 0.0)
@@ -182,8 +183,9 @@ class ChatUsageTrendTests(unittest.TestCase):
             start,
             end,
             {
-                "codex": [b0_unpriced, b0_zero_in_bucket, zero_missing_ts, b1_priced_c1],
-                "gemini": [b1_unpriced_c1, b1_unpriced_c2],
+                "codex": [b0_unpriced, b0_zero_in_bucket, zero_missing_ts, b1_priced_c1,
+                          b1_unpriced_c1, b1_unpriced_c2],
+                "gemini": [],
             },
             rows,
             False,

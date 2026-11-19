@@ -1224,7 +1224,8 @@ class DeviceUsageAggregator:
                     'gemini': local_gemini_validated,
                 }
             ]
-            partial = bool(local_codex_validated['partial'] or local_gemini_validated['partial'])
+            # Coverage and freshness issues below affect both providers.
+            partial = False
             remote_titles = {}
 
             for remote in manifest['remotes']:
@@ -1354,10 +1355,8 @@ class DeviceUsageAggregator:
                         f"{rname} usage snapshot is stale ({validated['age_seconds']}s old); combined total may be partial"
                     )
                 if codex_for_period['unidentified_events'] > 0:
-                    partial = True
                     warnings.append(f'{rname} Codex usage has records with missing or unsupported identity')
                 if gemini_for_period['unidentified_events'] > 0:
-                    partial = True
                     warnings.append(f'{rname} Gemini usage has records with missing or unsupported identity')
 
                 devices_out.append({
@@ -1386,6 +1385,9 @@ class DeviceUsageAggregator:
             )
             total_dups = codex_dups + gemini_dups
             total_conflicts = codex_conflicts + gemini_conflicts
+            trend_partial = partial or codex_partial or any(
+                not entry['codex']['usage']['available'] for entry in active_entries
+            )
             if codex_partial or gemini_partial or total_conflicts > 0:
                 partial = True
             if partial:
@@ -1414,6 +1416,7 @@ class DeviceUsageAggregator:
                 'chat_usage': build_chat_usage(
                     period_start_epoch, now_epoch, providers, remote_titles,
                     partial or not combined_codex['available'] or not combined_gemini['available'],
+                    trend_partial=trend_partial,
                 ),
             }
 

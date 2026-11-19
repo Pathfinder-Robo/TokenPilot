@@ -158,7 +158,7 @@ def put_chat_key(event, key):
     return event
 
 
-def build_chat_usage(start, end, providers, titles, partial):
+def build_chat_usage(start, end, providers, titles, partial, *, trend_partial=None):
     rows = {}
     for provider, events in providers.items():
         groups = {}
@@ -181,5 +181,7 @@ def build_chat_usage(start, end, providers, titles, partial):
         'end_at': stamp(end),
         'partial': partial or 'unattributed' in rows,
         'rows': chat_rows,
-        'trend': build_usage_trend(start, end, providers, chat_rows, partial),
+        'trend': build_usage_trend(
+            start, end, providers, chat_rows, partial if trend_partial is None else trend_partial,
+        ),
     }

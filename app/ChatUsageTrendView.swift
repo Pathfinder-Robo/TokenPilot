@@ -283,7 +283,7 @@ private struct TrendSectionHeaderView: View {
 
     private var primaryLabels: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(loc.L("Usage trend", "用量趋势"))
+            Text(loc.L("Codex usage trend", "Codex 用量趋势"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(palette.readablePrimaryTextColor)
 
@@ -340,7 +340,7 @@ private struct TotalUsageCardView: View {
     }
 
     var body: some View {
-        let title = loc.L("Total usage", "总用量")
+        let title = loc.L("Total Codex usage", "Codex 总用量")
 
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -386,7 +386,7 @@ private struct TotalUsageCardView: View {
                         color: window.totalPlot.color,
                         symbol: .circle
                     )
-                    Text(loc.L("Codex + Gemini combined", "Codex + Gemini 合计"))
+                    Text("Codex")
                         .font(.caption2)
                         .foregroundStyle(palette.secondaryTextColor)
                         .lineLimit(1)
@@ -401,7 +401,7 @@ private struct TotalUsageCardView: View {
                 .accessibilityElement(children: .combine)
             } else {
                 TrendPlotEmptyPlaceholderView(
-                    message: loc.L("No known total usage in this window", "此时间段内暂无已知总用量"),
+                    message: loc.L("No recorded Codex usage in this window", "此时间段暂无 Codex 用量记录"),
                     height: chartHeight + 20,
                     palette: palette
                 )
@@ -517,7 +517,7 @@ private struct TotalUsagePlotView: View {
             )
         }
         .frame(height: chartHeight)
-        .accessibilityLabel(Text(loc.L("Total usage chart", "总用量图表")))
+        .accessibilityLabel(Text(loc.L("Total Codex usage chart", "Codex 总用量图表")))
         .accessibilityValue(
             Text(
                 loc.L(
@@ -559,11 +559,6 @@ private struct TopChatsCardView: View {
                     Text(TrendFormatting.bucketSpanLabel(slot, calendar: calendar, loc: loc))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(palette.readablePrimaryTextColor)
-                        .lineLimit(1)
-                } else {
-                    Text(loc.L("Codex + Gemini USD", "Codex + Gemini USD"))
-                        .font(.caption2)
-                        .foregroundStyle(palette.secondaryTextColor)
                         .lineLimit(1)
                 }
             }
