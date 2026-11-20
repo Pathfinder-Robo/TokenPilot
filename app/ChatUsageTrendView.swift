@@ -139,10 +139,16 @@ struct ChatUsageTrend: Decodable, Equatable {
 }
 
 struct ChatUsageTrendView: View {
+    private enum ChartTab: Hashable {
+        case total, topChats
+    }
+
     let trend: ChatUsageTrend
     let timeZone: TimeZone
     let loc: TokenPilotLocalizer
     let palette: ResolvedThemePalette
+
+    @State private var selectedTab: ChartTab = .total
 
     init(
         trend: ChatUsageTrend,
@@ -181,46 +187,31 @@ struct ChatUsageTrendView: View {
             )
 
             if let window = prepared.window {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        TotalUsageCardView(
-                            window: window,
-                            calendar: calendar,
-                            chartHeight: 148,
-                            loc: loc,
-                            palette: palette
-                        )
-                        .frame(minWidth: 320, idealWidth: 340, maxWidth: .infinity)
+                Picker(loc.L("Usage chart", "用量图表"), selection: $selectedTab) {
+                    Text(loc.L("Total usage", "总用量")).tag(ChartTab.total)
+                    Text(loc.L("Top 3 chats", "用量前三")).tag(ChartTab.topChats)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
 
-                        TopChatsCardView(
-                            window: window,
-                            calendar: calendar,
-                            chartHeight: 148,
-                            loc: loc,
-                            palette: palette
-                        )
-                        .frame(minWidth: 320, idealWidth: 340, maxWidth: .infinity)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        TotalUsageCardView(
-                            window: window,
-                            calendar: calendar,
-                            chartHeight: 120,
-                            loc: loc,
-                            palette: palette
-                        )
-                        .frame(maxWidth: .infinity)
-
-                        TopChatsCardView(
-                            window: window,
-                            calendar: calendar,
-                            chartHeight: 120,
-                            loc: loc,
-                            palette: palette
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
+                switch selectedTab {
+                case .total:
+                    TotalUsageCardView(
+                        window: window,
+                        calendar: calendar,
+                        chartHeight: 148,
+                        loc: loc,
+                        palette: palette
+                    )
+                case .topChats:
+                    TopChatsCardView(
+                        window: window,
+                        calendar: calendar,
+                        chartHeight: 148,
+                        loc: loc,
+                        palette: palette
+                    )
                 }
             } else {
                 TrendEmptyStateCardView(
@@ -340,15 +331,8 @@ private struct TotalUsageCardView: View {
     }
 
     var body: some View {
-        let title = loc.L("Total Codex usage", "Codex 总用量")
-
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(palette.readablePrimaryTextColor)
-                    .lineLimit(1)
-
+            HStack {
                 Spacer(minLength: 6)
 
                 if let slot = hoveredBucket {
@@ -407,6 +391,7 @@ private struct TotalUsageCardView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -468,15 +453,15 @@ private struct TotalUsagePlotView: View {
         }
         .chartForegroundStyleScale(domain: plot.segmentDomain, range: plot.segmentColors)
         .chartLegend(.hidden)
-        .chartXScale(domain: xDomain)
+        .chartXScale(domain: xDomain, range: .plotDimension(startPadding: 18, endPadding: 18))
         .chartYScale(domain: 0...plot.yUpperBound)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+            AxisMarks(values: TrendFormatting.axisDates(in: xDomain, calendar: calendar)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
                     .foregroundStyle(palette.secondaryTextColor.opacity(palette.isDark ? 0.18 : 0.14))
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(palette.secondaryTextColor.opacity(0.35))
-                AxisValueLabel {
+                AxisValueLabel(anchor: .top) {
                     if let date = value.as(Date.self) {
                         Text(
                             TrendFormatting.axisDateLabel(
@@ -544,26 +529,15 @@ private struct TopChatsCardView: View {
     }
 
     var body: some View {
-        let title = loc.L("Top chats by Codex usage", "Codex 用量前三")
-
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
+            if window.topChatsPlot.hasSeries && window.topChatsPlot.hasPlottedPoints {
+                Text(hoveredSlot.map { TrendFormatting.bucketSpanLabel($0, calendar: calendar, loc: loc) } ?? " ")
+                    .font(.caption2.monospacedDigit())
                     .foregroundStyle(palette.readablePrimaryTextColor)
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .accessibilityHidden(hoveredSlot == nil)
 
-                Spacer(minLength: 6)
-
-                if let slot = hoveredSlot {
-                    Text(TrendFormatting.bucketSpanLabel(slot, calendar: calendar, loc: loc))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(palette.readablePrimaryTextColor)
-                        .lineLimit(1)
-                }
-            }
-
-            if window.topChatsPlot.hasSeries && window.topChatsPlot.hasPlottedPoints {
                 TopChatsPlotView(
                     plot: window.topChatsPlot,
                     xDomain: window.xDomain,
@@ -609,6 +583,7 @@ private struct TopChatsCardView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -671,15 +646,15 @@ private struct TopChatsPlotView: View {
         .chartForegroundStyleScale(domain: plot.segmentDomain, range: plot.segmentColors)
         .chartSymbolScale(domain: plot.segmentDomain, range: plot.segmentSymbols)
         .chartLegend(.hidden)
-        .chartXScale(domain: xDomain)
+        .chartXScale(domain: xDomain, range: .plotDimension(startPadding: 18, endPadding: 18))
         .chartYScale(domain: 0...plot.yUpperBound)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+            AxisMarks(values: TrendFormatting.axisDates(in: xDomain, calendar: calendar)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
                     .foregroundStyle(palette.secondaryTextColor.opacity(palette.isDark ? 0.18 : 0.14))
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(palette.secondaryTextColor.opacity(0.35))
-                AxisValueLabel {
+                AxisValueLabel(anchor: .top) {
                     if let date = value.as(Date.self) {
                         Text(
                             TrendFormatting.axisDateLabel(
@@ -1500,6 +1475,17 @@ private enum TrendFormatting {
                 return loc.L("Every \(bucketSeconds)s", "每 \(bucketSeconds) 秒")
             }
         }
+    }
+
+    static func axisDates(in domain: ClosedRange<Date>, calendar: Calendar) -> [Date] {
+        let hourStart = calendar.dateInterval(of: .hour, for: domain.lowerBound)?.start ?? domain.lowerBound
+        let span = domain.upperBound.timeIntervalSince(domain.lowerBound)
+        let quarterHour: TimeInterval = 15 * 60
+        let step = quarterHour * max(1, ceil(span / (12 * quarterHour)))
+        let stepsToStart = ceil(domain.lowerBound.timeIntervalSince(hourStart) / step)
+        let first = hourStart.timeIntervalSinceReferenceDate + stepsToStart * step
+        let last = domain.upperBound.timeIntervalSinceReferenceDate
+        return stride(from: first, through: last, by: step).map(Date.init(timeIntervalSinceReferenceDate:))
     }
 
     static func axisDateLabel(
